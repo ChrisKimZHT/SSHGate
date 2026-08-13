@@ -5,6 +5,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { api } from '../api'
 import type { TerminalEvent } from '../types'
+import { showError } from '../utils/errorDialog'
 
 const props = defineProps<{
   terminalId: string
@@ -71,7 +72,8 @@ onMounted(async () => {
   })
 
   terminal.onData((data) => api.terminalInput(props.terminalId, data).catch((error) => {
-    status.value = String(error)
+    status.value = '终端输入失败'
+    void showError(error)
   }))
 
   observer = new ResizeObserver(() => {
@@ -85,8 +87,8 @@ onMounted(async () => {
     status.value = '已连接'
     terminal.focus()
   } catch (error) {
-    status.value = String(error)
-    terminal.writeln(`\x1b[31m无法打开终端：${status.value}\x1b[0m`)
+    status.value = '终端打开失败'
+    await showError(error)
   }
 })
 

@@ -57,7 +57,7 @@ async fn handle_connection(
             &mut socket,
             404,
             "Not Found",
-            &format!("No running SSHGate service matches {host}"),
+            &format!("No running SSHGate application matches {host}"),
         )
         .await?;
         return Ok(());

@@ -13,6 +13,8 @@ pub struct SshServer {
     #[serde(default)]
     pub private_key_path: String,
     #[serde(default)]
+    pub remember_secret: bool,
+    #[serde(default)]
     pub host_key_fingerprint: Option<String>,
 }
 

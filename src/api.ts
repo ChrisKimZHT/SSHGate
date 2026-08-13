@@ -3,7 +3,8 @@ import type { RuntimeSnapshot, Settings, SshServer, WebService } from './types'
 
 export const api = {
   snapshot: () => invoke<RuntimeSnapshot>('get_snapshot'),
-  saveServer: (server: SshServer) => invoke<RuntimeSnapshot>('save_server', { server }),
+  saveServer: (server: SshServer, secret?: string) =>
+    invoke<RuntimeSnapshot>('save_server', { server, secret: secret || null }),
   removeServer: (serverId: string) => invoke<RuntimeSnapshot>('remove_server', { serverId }),
   connectServer: (serverId: string, password?: string) =>
     invoke<RuntimeSnapshot>('connect_server', { serverId, password: password || null }),
@@ -12,6 +13,10 @@ export const api = {
   removeService: (serviceId: string) => invoke<RuntimeSnapshot>('remove_service', { serviceId }),
   startService: (serviceId: string, password?: string) =>
     invoke<RuntimeSnapshot>('start_service', { serviceId, password: password || null }),
+  startServerServices: (serverId: string, password?: string) =>
+    invoke<RuntimeSnapshot>('start_server_services', { serverId, password: password || null }),
+  stopServerServices: (serverId: string) =>
+    invoke<RuntimeSnapshot>('stop_server_services', { serverId }),
   stopService: (serviceId: string) => invoke<RuntimeSnapshot>('stop_service', { serviceId }),
   saveSettings: (settings: Settings) => invoke<RuntimeSnapshot>('save_settings', { settings }),
   openTerminal: (serverId: string, terminalId: string, cols: number, rows: number, password?: string) =>

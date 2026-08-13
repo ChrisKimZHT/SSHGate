@@ -1,3 +1,4 @@
+use crate::credentials;
 use crate::model::{
     AppConfig, AuthType, ConnectionStatus, RuntimeSnapshot, RuntimeState, ServiceStatus, Settings,
     SshServer, TerminalEvent, WebService,
@@ -9,7 +10,7 @@ use base64::Engine;
 use russh::client;
 use russh::keys::{load_secret_key, PrivateKeyWithHashAlg};
 use russh::{Channel, ChannelMsg, Disconnect};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -152,7 +153,7 @@ impl AppState {
         if !config.settings.auto_start_services {
             return;
         }
-        let server_ids: Vec<String> = config
+        let server_ids: HashSet<String> = config
             .services
             .iter()
             .filter(|service| service.desired_running)
@@ -162,7 +163,7 @@ impl AppState {
             let Some(server) = config.servers.iter().find(|server| server.id == server_id) else {
                 continue;
             };
-            if server.auth_type == AuthType::Key {
+            if server.auth_type == AuthType::Key || server.remember_secret {
                 let state = self.clone();
                 let id = server_id.clone();
                 tauri::async_runtime::spawn(async move {
@@ -172,14 +173,18 @@ impl AppState {
                 self.set_server_services_state(
                     &server_id,
                     ServiceStatus::Error,
-                    Some("密码不会保存，请手动重新连接".into()),
+                    Some("未保存 SSH 密码，请手动重新连接".into()),
                 )
                 .await;
             }
         }
     }
 
-    pub async fn save_server(&self, mut server: SshServer) -> anyhow::Result<()> {
+    pub async fn save_server(
+        &self,
+        mut server: SshServer,
+        secret: Option<String>,
+    ) -> anyhow::Result<()> {
         validate_server(&server)?;
         server.name = server.name.trim().to_owned();
         server.host = server.host.trim().to_owned();
@@ -189,14 +194,52 @@ impl AppState {
             server.id = Uuid::new_v4().to_string();
         }
 
-        let mut config = self.0.config.write().await;
-        if config
-            .servers
-            .iter()
-            .any(|item| item.name.eq_ignore_ascii_case(&server.name) && item.id != server.id)
-        {
+        let (name_exists, existing) = {
+            let config = self.0.config.read().await;
+            (
+                config.servers.iter().any(|item| {
+                    item.name.eq_ignore_ascii_case(&server.name) && item.id != server.id
+                }),
+                config
+                    .servers
+                    .iter()
+                    .find(|item| item.id == server.id)
+                    .cloned(),
+            )
+        };
+        if name_exists {
             return Err(anyhow!("服务器名称已存在"));
         }
+
+        let secret = secret.filter(|value| !value.is_empty());
+        if server.remember_secret {
+            if let Some(secret) = secret.as_deref() {
+                credentials::set_secret(&server.id, secret).await?;
+            } else {
+                let can_keep_existing = existing
+                    .as_ref()
+                    .map(|item| item.remember_secret && item.auth_type == server.auth_type)
+                    .unwrap_or(false);
+                if !can_keep_existing || credentials::get_secret(&server.id).await?.is_none() {
+                    return Err(anyhow!(
+                        "请输入要保存到系统凭据库的{}",
+                        if server.auth_type == AuthType::Password {
+                            "SSH 密码"
+                        } else {
+                            "私钥口令"
+                        }
+                    ));
+                }
+            }
+        } else if existing
+            .as_ref()
+            .map(|item| item.remember_secret)
+            .unwrap_or(false)
+        {
+            credentials::delete_secret(&server.id).await?;
+        }
+
+        let mut config = self.0.config.write().await;
         match config.servers.iter_mut().find(|item| item.id == server.id) {
             Some(existing) => *existing = server.clone(),
             None => config.servers.push(server.clone()),
@@ -214,6 +257,19 @@ impl AppState {
     }
 
     pub async fn remove_server(&self, server_id: &str) -> anyhow::Result<()> {
+        let remembered = self
+            .0
+            .config
+            .read()
+            .await
+            .servers
+            .iter()
+            .find(|server| server.id == server_id)
+            .map(|server| server.remember_secret)
+            .unwrap_or(false);
+        if remembered {
+            credentials::delete_secret(server_id).await?;
+        }
         self.close_session(server_id).await;
         let terminal_ids: Vec<String> = self
             .0
@@ -256,25 +312,28 @@ impl AppState {
     pub async fn save_service(&self, mut service: WebService) -> anyhow::Result<()> {
         service.name = service.name.trim().to_owned();
         service.remote_host = service.remote_host.trim().to_owned();
-        service.domain = normalize_domain(&service.domain);
-        validate_service(&service)?;
         if service.id.trim().is_empty() {
             service.id = Uuid::new_v4().to_string();
         }
         let mut config = self.0.config.write().await;
-        if !config
+        let server_name = config
             .servers
             .iter()
-            .any(|server| server.id == service.server_id)
-        {
-            return Err(anyhow!("所选 SSH 服务器不存在"));
-        }
+            .find(|server| server.id == service.server_id)
+            .map(|server| server.name.clone())
+            .ok_or_else(|| anyhow!("所选 SSH 服务器不存在"))?;
+        service.domain = if service.domain.trim().is_empty() {
+            default_service_domain(&service.name, &server_name)
+        } else {
+            normalize_domain(&service.domain)
+        };
+        validate_service(&service)?;
         if config
             .services
             .iter()
             .any(|item| item.domain.eq_ignore_ascii_case(&service.domain) && item.id != service.id)
         {
-            return Err(anyhow!("域名 {} 已被其他服务使用", service.domain));
+            return Err(anyhow!("域名 {} 已被其他应用使用", service.domain));
         }
         match config
             .services
@@ -300,14 +359,21 @@ impl AppState {
     }
 
     pub async fn remove_service(&self, service_id: &str) -> anyhow::Result<()> {
-        self.0
-            .config
-            .write()
-            .await
-            .services
-            .retain(|service| service.id != service_id);
+        let server_id = {
+            let mut config = self.0.config.write().await;
+            let server_id = config
+                .services
+                .iter()
+                .find(|service| service.id == service_id)
+                .map(|service| service.server_id.clone());
+            config.services.retain(|service| service.id != service_id);
+            server_id
+        };
         self.0.service_states.write().await.remove(service_id);
         self.persist().await?;
+        if let Some(server_id) = server_id {
+            self.close_session_if_unused(&server_id).await;
+        }
         self.emit_state().await;
         Ok(())
     }
@@ -334,7 +400,7 @@ impl AppState {
                 .services
                 .iter_mut()
                 .find(|service| service.id == service_id)
-                .ok_or_else(|| anyhow!("服务不存在"))?;
+                .ok_or_else(|| anyhow!("应用不存在"))?;
             service.desired_running = true;
             service.clone()
         };
@@ -365,20 +431,109 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn start_server_services(
+        &self,
+        server_id: &str,
+        password: Option<String>,
+    ) -> anyhow::Result<()> {
+        let service_ids = {
+            let mut config = self.0.config.write().await;
+            if !config.servers.iter().any(|server| server.id == server_id) {
+                return Err(anyhow!("SSH 服务器不存在"));
+            }
+            let mut ids = Vec::new();
+            for service in config
+                .services
+                .iter_mut()
+                .filter(|service| service.server_id == server_id)
+            {
+                service.desired_running = true;
+                ids.push(service.id.clone());
+            }
+            ids
+        };
+        if service_ids.is_empty() {
+            return Err(anyhow!("该服务器还没有应用"));
+        }
+        {
+            let mut states = self.0.service_states.write().await;
+            for id in &service_ids {
+                states.insert(id.clone(), RuntimeState::new(ServiceStatus::Starting));
+            }
+        }
+        self.persist().await?;
+        self.emit_state().await;
+
+        if let Err(error) = self.connect_internal(server_id, password, false).await {
+            let mut states = self.0.service_states.write().await;
+            for id in &service_ids {
+                states.insert(
+                    id.clone(),
+                    RuntimeState::error(ServiceStatus::Error, error.to_string()),
+                );
+            }
+            drop(states);
+            self.emit_state().await;
+            return Err(error);
+        }
+        {
+            let mut states = self.0.service_states.write().await;
+            for id in service_ids {
+                states.insert(id, RuntimeState::new(ServiceStatus::Running));
+            }
+        }
+        self.emit_state().await;
+        Ok(())
+    }
+
     pub async fn stop_service(&self, service_id: &str) -> anyhow::Result<()> {
         let mut config = self.0.config.write().await;
         let service = config
             .services
             .iter_mut()
             .find(|service| service.id == service_id)
-            .ok_or_else(|| anyhow!("服务不存在"))?;
+            .ok_or_else(|| anyhow!("应用不存在"))?;
         service.desired_running = false;
+        let server_id = service.server_id.clone();
         drop(config);
         self.0.service_states.write().await.insert(
             service_id.to_owned(),
             RuntimeState::new(ServiceStatus::Stopped),
         );
         self.persist().await?;
+        self.close_session_if_unused(&server_id).await;
+        self.emit_state().await;
+        Ok(())
+    }
+
+    pub async fn stop_server_services(&self, server_id: &str) -> anyhow::Result<()> {
+        let service_ids = {
+            let mut config = self.0.config.write().await;
+            if !config.servers.iter().any(|server| server.id == server_id) {
+                return Err(anyhow!("SSH 服务器不存在"));
+            }
+            let mut ids = Vec::new();
+            for service in config
+                .services
+                .iter_mut()
+                .filter(|service| service.server_id == server_id)
+            {
+                service.desired_running = false;
+                ids.push(service.id.clone());
+            }
+            ids
+        };
+        if service_ids.is_empty() {
+            return Err(anyhow!("该服务器还没有应用"));
+        }
+        {
+            let mut states = self.0.service_states.write().await;
+            for id in service_ids {
+                states.insert(id, RuntimeState::new(ServiceStatus::Stopped));
+            }
+        }
+        self.persist().await?;
+        self.close_session_if_unused(server_id).await;
         self.emit_state().await;
         Ok(())
     }
@@ -416,6 +571,23 @@ impl AppState {
             .find(|server| server.id == server_id)
             .cloned()
             .ok_or_else(|| anyhow!("SSH 服务器不存在"))?;
+
+        let provided_secret = password.filter(|value| !value.is_empty());
+        let password = if provided_secret.is_some() {
+            provided_secret
+        } else if server.remember_secret {
+            match credentials::get_secret(&server.id).await {
+                Ok(secret) => secret,
+                Err(error) => {
+                    let message = format!("无法读取已保存的 SSH 凭据：{error:#}");
+                    self.connection_failed(&server.id, reconnecting, &message)
+                        .await;
+                    return Err(anyhow!(message));
+                }
+            }
+        } else {
+            None
+        };
 
         let status = if reconnecting {
             ConnectionStatus::Reconnecting
@@ -468,12 +640,13 @@ impl AppState {
             match server.auth_type {
                 AuthType::Key => {
                     let key_path = expand_home(&server.private_key_path);
-                    let key = load_secret_key(&key_path, None).with_context(|| {
-                        format!(
-                            "无法读取私钥 {}。加密私钥暂不支持，请使用未加密的密钥",
-                            key_path.display()
-                        )
-                    })?;
+                    let key =
+                        load_secret_key(&key_path, password.as_deref()).with_context(|| {
+                            format!(
+                                "无法读取私钥 {}。请检查私钥路径或输入正确的私钥口令",
+                                key_path.display()
+                            )
+                        })?;
                     let hash = handle.best_supported_rsa_hash().await?.flatten();
                     Ok(handle
                         .authenticate_publickey(
@@ -486,7 +659,7 @@ impl AppState {
                 AuthType::Password => {
                     let password = password
                         .filter(|value| !value.is_empty())
-                        .ok_or_else(|| anyhow!("请输入本次连接密码；SSHGate 不会保存密码"))?;
+                        .ok_or_else(|| anyhow!("请输入 SSH 密码"))?;
                     Ok(handle
                         .authenticate_password(server.username.clone(), password)
                         .await?
@@ -608,7 +781,7 @@ impl AppState {
                 else {
                     return;
                 };
-                if server.auth_type == AuthType::Password {
+                if server.auth_type == AuthType::Password && !server.remember_secret {
                     let message = "SSH 已断开；密码未保存，请手动重新连接";
                     state.connection_failed(&server_id, false, message).await;
                     return;
@@ -666,6 +839,35 @@ impl AppState {
                 .disconnect(Disconnect::ByApplication, "SSHGate disconnect", "en")
                 .await;
         }
+    }
+
+    async fn close_session_if_unused(&self, server_id: &str) {
+        let has_running_app = self
+            .0
+            .config
+            .read()
+            .await
+            .services
+            .iter()
+            .any(|service| service.server_id == server_id && service.desired_running);
+        if has_running_app {
+            return;
+        }
+        let has_terminal = self
+            .0
+            .terminals
+            .lock()
+            .await
+            .values()
+            .any(|terminal| terminal.server_id == server_id);
+        if has_terminal {
+            return;
+        }
+        self.close_session(server_id).await;
+        self.0.server_states.write().await.insert(
+            server_id.to_owned(),
+            RuntimeState::new(ConnectionStatus::Stopped),
+        );
     }
 
     async fn set_server_services_state(
@@ -785,20 +987,32 @@ impl AppState {
             Some(handle) if !handle.lock().await.is_closed() => handle,
             _ => self.connect_internal(server_id, password, false).await?,
         };
-        let channel = handle
-            .lock()
-            .await
-            .channel_open_session()
-            .await
-            .context("无法打开 SSH session channel")?;
-        channel
-            .request_pty(true, "xterm-256color", cols, rows, 0, 0, &[])
-            .await
-            .context("远端拒绝 PTY 请求")?;
-        channel
-            .request_shell(true)
-            .await
-            .context("远端拒绝 Shell 请求")?;
+        let channel_result: anyhow::Result<Channel<client::Msg>> = async {
+            let channel = handle
+                .lock()
+                .await
+                .channel_open_session()
+                .await
+                .context("无法打开 SSH session channel")?;
+            channel
+                .request_pty(false, "xterm-256color", cols, rows, 0, 0, &[])
+                .await
+                .context("远端拒绝 PTY 请求")?;
+            channel
+                .request_shell(false)
+                .await
+                .context("远端拒绝 Shell 请求")?;
+            Ok(channel)
+        }
+        .await;
+        let channel = match channel_result {
+            Ok(channel) => channel,
+            Err(error) => {
+                self.close_session_if_unused(server_id).await;
+                self.emit_state().await;
+                return Err(error);
+            }
+        };
 
         let (sender, mut receiver) = mpsc::channel::<TerminalControl>(128);
         self.0.terminals.lock().await.insert(
@@ -810,9 +1024,11 @@ impl AppState {
         );
         let state = self.clone();
         let id = terminal_id.to_owned();
+        let terminal_server_id = server_id.to_owned();
         tauri::async_runtime::spawn(async move {
             let mut channel = channel;
             let mut exit_status = None;
+            let mut close_message = None;
             loop {
                 tokio::select! {
                     message = channel.wait() => match message {
@@ -821,7 +1037,22 @@ impl AppState {
                             let _ = state.0.app.emit("terminal-output", TerminalEvent { terminal_id: id.clone(), data: Some(encoded), message: None, exit_status: None });
                         }
                         Some(ChannelMsg::ExitStatus { exit_status: status }) => exit_status = Some(status),
-                        Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => break,
+                        Some(ChannelMsg::ExitSignal { error_message, .. }) => {
+                            close_message = Some(if error_message.is_empty() { "远端 Shell 被信号终止".into() } else { error_message });
+                            break;
+                        }
+                        Some(ChannelMsg::Failure) => {
+                            close_message = Some("远端拒绝了 PTY 或 Shell 请求".into());
+                            break;
+                        }
+                        Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) => {
+                            close_message.get_or_insert_with(|| "远端 Shell 已关闭".into());
+                            break;
+                        }
+                        None => {
+                            close_message.get_or_insert_with(|| "SSH channel 已关闭".into());
+                            break;
+                        }
                         _ => {}
                     },
                     control = receiver.recv() => match control {
@@ -840,12 +1071,14 @@ impl AppState {
                 }
             }
             state.0.terminals.lock().await.remove(&id);
+            state.close_session_if_unused(&terminal_server_id).await;
+            state.emit_state().await;
             let _ = state.0.app.emit(
                 "terminal-closed",
                 TerminalEvent {
                     terminal_id: id,
                     data: None,
-                    message: None,
+                    message: close_message,
                     exit_status,
                 },
             );
@@ -889,8 +1122,12 @@ impl AppState {
     }
 
     pub async fn close_terminal(&self, terminal_id: &str) {
-        if let Some(entry) = self.0.terminals.lock().await.remove(terminal_id) {
+        let entry = self.0.terminals.lock().await.remove(terminal_id);
+        if let Some(entry) = entry {
+            let server_id = entry.server_id.clone();
             let _ = entry.sender.send(TerminalControl::Close).await;
+            self.close_session_if_unused(&server_id).await;
+            self.emit_state().await;
         }
     }
 
@@ -972,7 +1209,52 @@ fn validate_server(server: &SshServer) -> anyhow::Result<()> {
 }
 
 fn normalize_domain(domain: &str) -> String {
-    domain.trim().trim_end_matches('.').to_ascii_lowercase()
+    let lower = domain.trim().to_ascii_lowercase();
+    let without_scheme = lower
+        .strip_prefix("http://")
+        .or_else(|| lower.strip_prefix("https://"))
+        .unwrap_or(&lower);
+    let without_trailing = without_scheme.trim_end_matches(|ch| ch == '/' || ch == '.');
+    let prefix = without_trailing
+        .strip_suffix(".localhost")
+        .unwrap_or(without_trailing);
+    let normalized = prefix
+        .split('.')
+        .map(|label| normalize_domain_label(label, ""))
+        .filter(|label| !label.is_empty())
+        .collect::<Vec<_>>()
+        .join(".");
+    format!("{normalized}.localhost")
+}
+
+fn normalize_domain_label(value: &str, fallback: &str) -> String {
+    let mut result = String::new();
+    let mut last_was_separator = false;
+    for ch in value.trim().to_ascii_lowercase().chars() {
+        if ch.is_ascii_alphanumeric() {
+            result.push(ch);
+            last_was_separator = false;
+        } else if !last_was_separator && !result.is_empty() {
+            result.push('-');
+            last_was_separator = true;
+        }
+    }
+    while result.ends_with('-') {
+        result.pop();
+    }
+    if result.is_empty() {
+        fallback.to_owned()
+    } else {
+        result
+    }
+}
+
+fn default_service_domain(service_name: &str, server_name: &str) -> String {
+    format!(
+        "{}.{}.localhost",
+        normalize_domain_label(service_name, "service"),
+        normalize_domain_label(server_name, "server")
+    )
 }
 
 fn validate_service(service: &WebService) -> anyhow::Result<()> {
@@ -1046,6 +1328,7 @@ fn parse_ssh_config(raw: &str) -> Vec<SshServer> {
             username: entry.user.unwrap_or_default(),
             auth_type: AuthType::Key,
             private_key_path: entry.identity.unwrap_or_else(|| "~/.ssh/id_ed25519".into()),
+            remember_secret: false,
             host_key_fingerprint: None,
         });
     }
@@ -1086,7 +1369,7 @@ fn parse_ssh_config(raw: &str) -> Vec<SshServer> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_domain, parse_ssh_config};
+    use super::{default_service_domain, normalize_domain, parse_ssh_config};
 
     #[test]
     fn imports_concrete_ssh_hosts_only() {
@@ -1102,6 +1385,22 @@ mod tests {
         assert_eq!(
             normalize_domain(" Jupyter.GPU.localhost. "),
             "jupyter.gpu.localhost"
+        );
+        assert_eq!(
+            normalize_domain("HTTP://My App.GPU_Server.localhost/"),
+            "my-app.gpu-server.localhost"
+        );
+    }
+
+    #[test]
+    fn creates_default_service_domain() {
+        assert_eq!(
+            default_service_domain("My Jupyter!", "GPU_Server A"),
+            "my-jupyter.gpu-server-a.localhost"
+        );
+        assert_eq!(
+            default_service_domain("中文应用", "服务器"),
+            "service.server.localhost"
         );
     }
 }

@@ -9,6 +9,7 @@ export interface SshServer {
   username: string
   authType: 'key' | 'password'
   privateKeyPath: string
+  rememberSecret: boolean
   hostKeyFingerprint?: string | null
 }
 

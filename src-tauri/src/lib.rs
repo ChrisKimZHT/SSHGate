@@ -1,3 +1,4 @@
+mod credentials;
 mod model;
 mod proxy;
 mod ssh;
@@ -18,8 +19,12 @@ async fn get_snapshot(state: State<'_, AppState>) -> CommandResult<RuntimeSnapsh
 async fn save_server(
     state: State<'_, AppState>,
     server: SshServer,
+    secret: Option<String>,
 ) -> CommandResult<RuntimeSnapshot> {
-    state.save_server(server).await.map_err(format_error)?;
+    state
+        .save_server(server, secret)
+        .await
+        .map_err(format_error)?;
     Ok(state.snapshot().await)
 }
 
@@ -89,6 +94,31 @@ async fn start_service(
 ) -> CommandResult<RuntimeSnapshot> {
     state
         .start_service(&service_id, password)
+        .await
+        .map_err(format_error)?;
+    Ok(state.snapshot().await)
+}
+
+#[tauri::command]
+async fn start_server_services(
+    state: State<'_, AppState>,
+    server_id: String,
+    password: Option<String>,
+) -> CommandResult<RuntimeSnapshot> {
+    state
+        .start_server_services(&server_id, password)
+        .await
+        .map_err(format_error)?;
+    Ok(state.snapshot().await)
+}
+
+#[tauri::command]
+async fn stop_server_services(
+    state: State<'_, AppState>,
+    server_id: String,
+) -> CommandResult<RuntimeSnapshot> {
+    state
+        .stop_server_services(&server_id)
         .await
         .map_err(format_error)?;
     Ok(state.snapshot().await)
@@ -193,6 +223,8 @@ pub fn run() {
             save_service,
             remove_service,
             start_service,
+            start_server_services,
+            stop_server_services,
             stop_service,
             save_settings,
             open_terminal,
