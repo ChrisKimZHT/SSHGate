@@ -41,6 +41,19 @@ async fn remove_server(
 }
 
 #[tauri::command]
+async fn save_sort_order(
+    state: State<'_, AppState>,
+    server_ids: Vec<String>,
+    service_ids: Vec<String>,
+) -> CommandResult<RuntimeSnapshot> {
+    state
+        .save_sort_order(server_ids, service_ids)
+        .await
+        .map_err(format_error)?;
+    Ok(state.snapshot().await)
+}
+
+#[tauri::command]
 async fn connect_server(
     state: State<'_, AppState>,
     server_id: String,
@@ -248,6 +261,7 @@ pub fn run() {
             get_snapshot,
             save_server,
             remove_server,
+            save_sort_order,
             connect_server,
             disconnect_server,
             clear_server_fingerprint,

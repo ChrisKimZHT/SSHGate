@@ -37,6 +37,10 @@ export default {
     startAllServices: '启动全部应用',
     openService: '打开应用',
     editService: '编辑应用',
+    sort: '排序',
+    finishSorting: '完成',
+    moveUp: '上移',
+    moveDown: '下移',
   },
   connections: {
     title: '连接',
@@ -133,6 +137,7 @@ export default {
     addressCopied: '访问地址已复制',
     allServicesStopped: '“{name}”的应用已全部停止',
     allServicesStarted: '“{name}”的应用已全部启动',
+    orderSaved: '排序已保存',
   },
   confirmations: {
     deleteServer: '删除“{name}”及其全部应用？',

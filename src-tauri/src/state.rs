@@ -326,6 +326,56 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn save_sort_order(
+        &self,
+        server_ids: Vec<String>,
+        service_ids: Vec<String>,
+    ) -> anyhow::Result<()> {
+        let mut config = self.0.config.write().await;
+        let requested_server_ids: HashSet<&str> =
+            server_ids.iter().map(String::as_str).collect();
+        let requested_service_ids: HashSet<&str> =
+            service_ids.iter().map(String::as_str).collect();
+        let valid_servers = requested_server_ids.len() == server_ids.len()
+            && server_ids.len() == config.servers.len()
+            && config
+                .servers
+                .iter()
+                .all(|server| requested_server_ids.contains(server.id.as_str()));
+        let valid_services = requested_service_ids.len() == service_ids.len()
+            && service_ids.len() == config.services.len()
+            && config
+                .services
+                .iter()
+                .all(|service| requested_service_ids.contains(service.id.as_str()));
+        if !valid_servers || !valid_services {
+            return Err(anyhow!("排序数据与当前配置不一致"));
+        }
+
+        let mut servers_by_id: HashMap<String, SshServer> = config
+            .servers
+            .drain(..)
+            .map(|server| (server.id.clone(), server))
+            .collect();
+        let mut services_by_id: HashMap<String, WebService> = config
+            .services
+            .drain(..)
+            .map(|service| (service.id.clone(), service))
+            .collect();
+        config.servers = server_ids
+            .into_iter()
+            .filter_map(|id| servers_by_id.remove(&id))
+            .collect();
+        config.services = service_ids
+            .into_iter()
+            .filter_map(|id| services_by_id.remove(&id))
+            .collect();
+        drop(config);
+        self.persist().await?;
+        self.emit_state().await;
+        Ok(())
+    }
+
     pub async fn clear_server_fingerprint(&self, server_id: &str) -> anyhow::Result<()> {
         let mut config = self.0.config.write().await;
         let server = config

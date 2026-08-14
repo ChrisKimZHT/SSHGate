@@ -6,6 +6,8 @@ export const api = {
   saveServer: (server: SshServer, secret?: string) =>
     invoke<RuntimeSnapshot>('save_server', { server, secret: secret || null }),
   removeServer: (serverId: string) => invoke<RuntimeSnapshot>('remove_server', { serverId }),
+  saveSortOrder: (serverIds: string[], serviceIds: string[]) =>
+    invoke<RuntimeSnapshot>('save_sort_order', { serverIds, serviceIds }),
   connectServer: (serverId: string, password?: string) =>
     invoke<RuntimeSnapshot>('connect_server', { serverId, password: password || null }),
   disconnectServer: (serverId: string) => invoke<RuntimeSnapshot>('disconnect_server', { serverId }),

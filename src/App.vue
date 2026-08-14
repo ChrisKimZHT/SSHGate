@@ -6,7 +6,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type TagProps } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import {
-  CirclePlus, ExternalLink, FileInput, FileOutput, Fingerprint, Import, Monitor, Pencil, Plus, RefreshCw,
+  ArrowDown, ArrowUp, ArrowUpDown, Check, CirclePlus, ExternalLink, FileInput, FileOutput, Fingerprint, Import, Monitor, Pencil, Plus, RefreshCw,
   Server, Settings as Setting, TerminalSquare, Trash2,
 } from 'lucide-vue-next'
 import { api } from './api'
@@ -42,6 +42,10 @@ const originalRememberSecret = ref(false)
 const passwordByServer = reactive<Record<string, string>>({})
 const terminalTabs = ref<TerminalTab[]>([])
 const activeTerminalId = ref('')
+const sortMode = ref(false)
+const sortSaving = ref(false)
+const sortedServerIds = ref<string[]>([])
+const sortedServiceIds = reactive<Record<string, string[]>>({})
 let unlistenState: UnlistenFn | undefined
 let settingsSaveTimer: number | undefined
 let settingsRevision = 0
@@ -71,6 +75,15 @@ const servers = computed(() => snapshot.value?.config.servers ?? [])
 const services = computed(() => snapshot.value?.config.services ?? [])
 const proxyHealthy = computed(() => !snapshot.value?.proxyError)
 const runningServiceCount = computed(() => services.value.filter((service) => serviceState(service.id).status === 'running').length)
+
+function orderByIds<T extends { id: string }>(items: T[], ids: string[]) {
+  const itemsById = new Map(items.map((item) => [item.id, item]))
+  return ids.map((id) => itemsById.get(id)).filter((item): item is T => item !== undefined)
+}
+
+const displayedServers = computed(() => sortMode.value
+  ? orderByIds(servers.value, sortedServerIds.value)
+  : servers.value)
 
 function syncSettingsForm(settings: Settings) {
   window.clearTimeout(settingsSaveTimer)
@@ -117,6 +130,42 @@ function normalizeDomainPrefix(value: string) {
 }
 function serverById(id: string) { return servers.value.find((server) => server.id === id) }
 function servicesFor(id: string) { return services.value.filter((service) => service.serverId === id) }
+function displayedServicesFor(id: string) {
+  const serverServices = servicesFor(id)
+  return sortMode.value ? orderByIds(serverServices, sortedServiceIds[id] ?? []) : serverServices
+}
+function moveItem<T>(items: T[], index: number, offset: -1 | 1) {
+  const target = index + offset
+  if (target < 0 || target >= items.length) return
+  const [item] = items.splice(index, 1)
+  items.splice(target, 0, item)
+}
+function beginSorting() {
+  sortedServerIds.value = servers.value.map((server) => server.id)
+  Object.keys(sortedServiceIds).forEach((id) => delete sortedServiceIds[id])
+  servers.value.forEach((server) => {
+    sortedServiceIds[server.id] = servicesFor(server.id).map((service) => service.id)
+  })
+  sortMode.value = true
+}
+async function finishSorting() {
+  if (sortSaving.value) return
+  sortSaving.value = true
+  try {
+    const serviceIds = sortedServerIds.value.flatMap((serverId) => sortedServiceIds[serverId] ?? [])
+    snapshot.value = await api.saveSortOrder([...sortedServerIds.value], serviceIds)
+    sortMode.value = false
+    ElMessage.success(t('messages.orderSaved'))
+  } catch (error) {
+    await showError(error)
+  } finally {
+    sortSaving.value = false
+  }
+}
+async function toggleSorting() {
+  if (sortMode.value) await finishSorting()
+  else beginSorting()
+}
 function serverState(id: string) { return snapshot.value?.serverStates[id] ?? { status: 'stopped' as const } }
 function serviceState(id: string) { return snapshot.value?.serviceStates[id] ?? { status: 'stopped' as const } }
 function allServerAppsEnabled(serverId: string) {
@@ -404,17 +453,17 @@ onBeforeUnmount(() => {
       </el-header>
       <el-main :class="['page-content', { 'terminal-content': page === 'terminal' }]">
         <template v-if="page === 'servers'">
-          <div class="page-heading"><div><h1>{{ t('connections.title') }}</h1><p>{{ t('connections.description') }}</p></div><el-button type="primary" :icon="Plus" @click="showAddServer">{{ t('actions.addServer') }}</el-button></div>
+          <div class="page-heading"><div><h1>{{ t('connections.title') }}</h1><p>{{ t('connections.description') }}</p></div><el-space><el-button :type="sortMode ? 'primary' : 'default'" :icon="sortMode ? Check : ArrowUpDown" :loading="sortSaving" @click="toggleSorting">{{ t(sortMode ? 'actions.finishSorting' : 'actions.sort') }}</el-button><el-button v-if="!sortMode" type="primary" :icon="Plus" @click="showAddServer">{{ t('actions.addServer') }}</el-button></el-space></div>
           <el-skeleton :loading="loading" animated :rows="6">
-            <div v-if="servers.length" class="server-grid">
-              <el-card v-for="server in servers" :key="server.id" shadow="hover" class="server-card">
-                <template #header><div class="server-header"><el-avatar shape="square" :size="44"><Server :size="22" /></el-avatar><div class="server-title"><h3>{{ server.name }}</h3><code class="server-address">{{ server.username }}@{{ server.host }}:{{ server.port }}</code></div><el-tag :type="stateType(serverState(server.id).status)" effect="light" round>{{ stateLabel(serverState(server.id).status) }}</el-tag><div class="server-header-actions"><el-button text circle :icon="TerminalSquare" :title="t('actions.openTerminal')" :aria-label="t('actions.openTerminal')" @click="openTerminal(server)" /><el-button text circle :icon="CirclePlus" :title="t('actions.addService')" :aria-label="t('actions.addService')" @click="showAddService(server.id)" /><el-button text circle :title="t('actions.editServer')" :aria-label="t('actions.editServer')" @click="showEditServer(server)"><Setting :size="16" /></el-button><el-switch v-if="servicesFor(server.id).length" :model-value="allServerAppsEnabled(server.id)" :loading="serverAppsStarting(server.id)" :title="t(allServerAppsEnabled(server.id) ? 'actions.stopAllServices' : 'actions.startAllServices')" :aria-label="t(allServerAppsEnabled(server.id) ? 'actions.stopAllServices' : 'actions.startAllServices')" @change="toggleAllServerApps(server, Boolean($event))" /></div></div></template>
+            <div v-if="displayedServers.length" class="server-grid">
+              <el-card v-for="(server, serverIndex) in displayedServers" :key="server.id" shadow="hover" class="server-card">
+                <template #header><div class="server-header"><el-avatar shape="square" :size="44"><Server :size="22" /></el-avatar><div class="server-title"><h3>{{ server.name }}</h3><code class="server-address">{{ server.username }}@{{ server.host }}:{{ server.port }}</code></div><el-tag :type="stateType(serverState(server.id).status)" effect="light" round>{{ stateLabel(serverState(server.id).status) }}</el-tag><div class="server-header-actions"><template v-if="sortMode"><el-button text circle :icon="ArrowUp" :title="t('actions.moveUp')" :aria-label="t('actions.moveUp')" :disabled="serverIndex === 0" @click="moveItem(sortedServerIds, serverIndex, -1)" /><el-button text circle :icon="ArrowDown" :title="t('actions.moveDown')" :aria-label="t('actions.moveDown')" :disabled="serverIndex === displayedServers.length - 1" @click="moveItem(sortedServerIds, serverIndex, 1)" /></template><template v-else><el-button text circle :icon="TerminalSquare" :title="t('actions.openTerminal')" :aria-label="t('actions.openTerminal')" @click="openTerminal(server)" /><el-button text circle :icon="CirclePlus" :title="t('actions.addService')" :aria-label="t('actions.addService')" @click="showAddService(server.id)" /><el-button text circle :title="t('actions.editServer')" :aria-label="t('actions.editServer')" @click="showEditServer(server)"><Setting :size="16" /></el-button><el-switch v-if="servicesFor(server.id).length" :model-value="allServerAppsEnabled(server.id)" :loading="serverAppsStarting(server.id)" :title="t(allServerAppsEnabled(server.id) ? 'actions.stopAllServices' : 'actions.startAllServices')" :aria-label="t(allServerAppsEnabled(server.id) ? 'actions.stopAllServices' : 'actions.startAllServices')" @change="toggleAllServerApps(server, Boolean($event))" /></template></div></div></template>
                 <el-input v-if="server.authType === 'password' && serverState(server.id).status !== 'connected' && !server.rememberSecret" v-model="passwordByServer[server.id]" class="password-input" type="password" show-password />
-                <el-empty v-if="!servicesFor(server.id).length" :image-size="46" :description="t('connections.noServices')" />
-                <el-table v-else :data="servicesFor(server.id)" size="small" :show-header="false" class="embedded-table">
+                <el-empty v-if="!displayedServicesFor(server.id).length" :image-size="46" :description="t('connections.noServices')" />
+                <el-table v-else :data="displayedServicesFor(server.id)" size="small" :show-header="false" class="embedded-table">
                   <el-table-column min-width="170"><template #default="{ row }"><div class="service-name"><b>{{ row.name }}</b><el-link type="primary" :underline="false" @click="copyDomain(row)">{{ row.domain }}</el-link></div></template></el-table-column>
                   <el-table-column width="125"><template #default="{ row }"><el-text type="info"><code>{{ row.remoteHost }}:{{ row.remotePort }}</code></el-text></template></el-table-column>
-                  <el-table-column width="132" align="right"><template #default="{ row }"><el-space :size="4"><el-button circle text :icon="ExternalLink" :title="t('actions.openService')" :disabled="serviceState(row.id).status !== 'running'" @click="openService(row)" /><el-button circle text :icon="Pencil" :title="t('actions.editService')" @click="showEditService(row)" /><el-switch :model-value="row.desiredRunning" :loading="['starting', 'reconnecting'].includes(serviceState(row.id).status)" @change="toggleService(row, Boolean($event))" /></el-space></template></el-table-column>
+                  <el-table-column width="132" align="right"><template #default="{ row, $index }"><el-space :size="4"><template v-if="sortMode"><el-button circle text :icon="ArrowUp" :title="t('actions.moveUp')" :aria-label="t('actions.moveUp')" :disabled="$index === 0" @click="moveItem(sortedServiceIds[server.id], $index, -1)" /><el-button circle text :icon="ArrowDown" :title="t('actions.moveDown')" :aria-label="t('actions.moveDown')" :disabled="$index === displayedServicesFor(server.id).length - 1" @click="moveItem(sortedServiceIds[server.id], $index, 1)" /></template><template v-else><el-button circle text :icon="ExternalLink" :title="t('actions.openService')" :disabled="serviceState(row.id).status !== 'running'" @click="openService(row)" /><el-button circle text :icon="Pencil" :title="t('actions.editService')" @click="showEditService(row)" /><el-switch :model-value="row.desiredRunning" :loading="['starting', 'reconnecting'].includes(serviceState(row.id).status)" @change="toggleService(row, Boolean($event))" /></template></el-space></template></el-table-column>
                 </el-table>
               </el-card>
             </div>
