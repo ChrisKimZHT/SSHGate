@@ -1,7 +1,5 @@
 # SSHGate
 
-## 简介
-
 SSHGate 是一个带**图形界面**的 SSH 端口转发工具。它通过 **SSH 端口映射**访问远端服务，并由本地**反向代理**将服务映射为易记的 `*.localhost` 地址。
 
 ![UI Preview](./images/ui-preview.png)
@@ -34,8 +32,6 @@ SSHGate 是一个带**图形界面**的 SSH 端口转发工具。它通过 **SSH
 ## 实现
 
 桌面端基于 Tauri 2、Vue 3 和 Element Plus。Rust 后端使用 `russh` 与 Tokio 管理 SSH 会话，通过 SSH `direct-tcpip` channel 转发远端流量，并以内置 HTTP 反向代理按 `.localhost` 域名路由请求。同一服务器的应用和终端复用 SSH 会话，终端界面由 xterm.js 提供。
-
-应用版本以根目录 `package.json` 为单一来源，Tauri 在编译时自动写入二进制和安装包。
 
 ## 开发
 
