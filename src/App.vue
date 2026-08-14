@@ -374,9 +374,9 @@ onBeforeUnmount(() => unlistenState?.())
           <el-card shadow="never" class="settings-card">
             <el-form :model="settingsForm" label-position="top">
               <h3>HTTP 反向代理</h3><el-text type="info">端口 80 可直接使用 http://*.localhost；端口被占用时可在这里修改。</el-text>
-              <el-row :gutter="20" class="settings-row"><el-col :span="14"><el-form-item label="监听地址"><el-input v-model="settingsForm.listenAddress" /></el-form-item></el-col><el-col :span="10"><el-form-item label="监听端口"><el-input-number v-model="settingsForm.listenPort" class="port-input" :min="1" :max="65535" controls-position="right" align="left" /></el-form-item></el-col></el-row>
+              <div class="settings-row"><el-form-item class="settings-address-field" label="监听地址"><el-input v-model="settingsForm.listenAddress" /></el-form-item><el-form-item class="settings-number-field" label="监听端口"><el-input-number v-model="settingsForm.listenPort" class="port-input" :min="1" :max="65535" :controls="false" align="left" /></el-form-item></div>
               <el-divider />
-              <h3>连接恢复</h3><el-row :gutter="20" class="settings-row"><el-col :span="12"><el-form-item label="重连间隔（秒）"><el-input-number v-model="settingsForm.reconnectDelaySeconds" :min="1" :max="300" controls-position="right" /></el-form-item></el-col><el-col :span="12"><el-form-item label="启动时恢复应用"><el-switch v-model="settingsForm.autoStartServices" inline-prompt active-text="开启" inactive-text="关闭" /></el-form-item></el-col></el-row>
+              <h3>连接恢复</h3><div class="settings-row"><el-form-item class="settings-number-field" label="重连间隔（秒）"><el-input-number v-model="settingsForm.reconnectDelaySeconds" :min="1" :max="300" controls-position="right" /></el-form-item><el-form-item class="settings-switch-field" label="启动时恢复应用"><el-switch v-model="settingsForm.autoStartServices" /></el-form-item></div>
               <div class="form-footer"><el-button type="primary" @click="saveSettings">保存设置</el-button></div>
             </el-form>
           </el-card>

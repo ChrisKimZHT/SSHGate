@@ -88,11 +88,15 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .fingerprint-server code { color: var(--el-text-color-secondary); font-size: 11px; }
 .fingerprint-value { display: block; color: var(--el-text-color-regular); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; user-select: text; }
 
-.settings-card { max-width: 760px; margin: 0 auto; border-radius: 12px; }
+.settings-card { max-width: 1180px; margin: 0 auto; border-radius: 12px; }
 .settings-card > .el-card__body { padding: 28px; }
 .settings-card h3 { margin: 0 0 7px; color: var(--el-text-color-primary); font-size: 15px; }
-.settings-row { margin-top: 22px; }
-.settings-card .el-input-number { width: 100%; }
+.settings-row { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin-top: 22px; }
+.settings-row .el-form-item { margin-bottom: 0; }
+.settings-address-field { flex: 0 1 360px; min-width: 240px; }
+.settings-number-field { flex: 0 0 160px; }
+.settings-number-field .el-input-number { width: 100%; }
+.settings-switch-field { flex: 0 0 auto; min-width: 160px; }
 .port-input { width: 100%; }
 .form-footer { margin-top: 28px; text-align: right; }
 
