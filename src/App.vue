@@ -63,7 +63,7 @@ const blankService = (serverId = ''): ServiceForm => ({
 })
 const serverForm = reactive<ServerForm>(blankServer())
 const serviceForm = reactive<ServiceForm>(blankService())
-const settingsForm = reactive<Settings>({ listenAddress: '127.0.0.1', listenPort: 80, reconnectDelaySeconds: 3, autoStartServices: true })
+const settingsForm = reactive<Settings>({ listenAddress: '127.0.0.1', listenPort: 80, reconnectDelaySeconds: 3, autoStartServices: true, privacyMode: false })
 
 const serverRules = computed<FormRules>(() => ({
   name: [{ required: true, message: t('validation.serverName'), trigger: 'blur' }],
@@ -139,6 +139,7 @@ function normalizeDomainPrefix(value: string) {
     .join('.')
 }
 function serverById(id: string) { return servers.value.find((server) => server.id === id) }
+function displayServerHost(host: string) { return settingsForm.privacyMode ? '*' : host }
 function servicesFor(id: string) { return services.value.filter((service) => service.serverId === id) }
 function displayedServicesFor(id: string) {
   const serverServices = servicesFor(id)
@@ -480,7 +481,7 @@ onBeforeUnmount(() => {
           <el-skeleton :loading="loading" animated :rows="6">
             <div v-if="displayedServers.length" class="server-grid">
               <el-card v-for="(server, serverIndex) in displayedServers" :key="server.id" shadow="hover" class="server-card">
-                <template #header><div class="server-header"><el-avatar shape="square" :size="44"><Server :size="22" /></el-avatar><div class="server-title"><h3>{{ server.name }}</h3><code class="server-address">{{ server.username }}@{{ server.host }}:{{ server.port }}</code></div><el-tag :type="stateType(serverState(server.id).status)" effect="light" round>{{ stateLabel(serverState(server.id).status) }}</el-tag><div class="server-header-actions"><template v-if="sortMode"><el-button text circle :icon="ArrowUp" :title="t('actions.moveUp')" :aria-label="t('actions.moveUp')" :disabled="serverIndex === 0" @click="moveItem(sortedServerIds, serverIndex, -1)" /><el-button text circle :icon="ArrowDown" :title="t('actions.moveDown')" :aria-label="t('actions.moveDown')" :disabled="serverIndex === displayedServers.length - 1" @click="moveItem(sortedServerIds, serverIndex, 1)" /></template><template v-else><el-button text circle :icon="TerminalSquare" :title="t('actions.openTerminal')" :aria-label="t('actions.openTerminal')" @click="openTerminal(server)" /><el-button text circle :icon="CirclePlus" :title="t('actions.addService')" :aria-label="t('actions.addService')" @click="showAddService(server.id)" /><el-button text circle :title="t('actions.editServer')" :aria-label="t('actions.editServer')" @click="showEditServer(server)"><Setting :size="16" /></el-button><el-switch v-if="servicesFor(server.id).length" :model-value="allServerAppsEnabled(server.id)" :loading="serverAppsStarting(server.id)" :title="t(allServerAppsEnabled(server.id) ? 'actions.stopAllServices' : 'actions.startAllServices')" :aria-label="t(allServerAppsEnabled(server.id) ? 'actions.stopAllServices' : 'actions.startAllServices')" @change="toggleAllServerApps(server, Boolean($event))" /></template></div></div></template>
+                <template #header><div class="server-header"><el-avatar shape="square" :size="44"><Server :size="22" /></el-avatar><div class="server-title"><h3>{{ server.name }}</h3><code class="server-address">{{ server.username }}@{{ displayServerHost(server.host) }}:{{ server.port }}</code></div><el-tag :type="stateType(serverState(server.id).status)" effect="light" round>{{ stateLabel(serverState(server.id).status) }}</el-tag><div class="server-header-actions"><template v-if="sortMode"><el-button text circle :icon="ArrowUp" :title="t('actions.moveUp')" :aria-label="t('actions.moveUp')" :disabled="serverIndex === 0" @click="moveItem(sortedServerIds, serverIndex, -1)" /><el-button text circle :icon="ArrowDown" :title="t('actions.moveDown')" :aria-label="t('actions.moveDown')" :disabled="serverIndex === displayedServers.length - 1" @click="moveItem(sortedServerIds, serverIndex, 1)" /></template><template v-else><el-button text circle :icon="TerminalSquare" :title="t('actions.openTerminal')" :aria-label="t('actions.openTerminal')" @click="openTerminal(server)" /><el-button text circle :icon="CirclePlus" :title="t('actions.addService')" :aria-label="t('actions.addService')" @click="showAddService(server.id)" /><el-button text circle :title="t('actions.editServer')" :aria-label="t('actions.editServer')" @click="showEditServer(server)"><Setting :size="16" /></el-button><el-switch v-if="servicesFor(server.id).length" :model-value="allServerAppsEnabled(server.id)" :loading="serverAppsStarting(server.id)" :title="t(allServerAppsEnabled(server.id) ? 'actions.stopAllServices' : 'actions.startAllServices')" :aria-label="t(allServerAppsEnabled(server.id) ? 'actions.stopAllServices' : 'actions.startAllServices')" @change="toggleAllServerApps(server, Boolean($event))" /></template></div></div></template>
                 <el-input v-if="server.authType === 'password' && serverState(server.id).status !== 'connected' && !server.rememberSecret" v-model="passwordByServer[server.id]" class="password-input" type="password" show-password />
                 <el-empty v-if="!displayedServicesFor(server.id).length" :image-size="46" :description="t('connections.noServices')" />
                 <el-table v-else :data="displayedServicesFor(server.id)" size="small" :show-header="false" class="embedded-table">
@@ -505,7 +506,7 @@ onBeforeUnmount(() => {
           <div class="page-heading"><div><h1>{{ t('fingerprints.title') }}</h1><p>{{ t('fingerprints.description') }}</p></div></div>
           <el-card shadow="never" class="fingerprint-card">
             <el-table v-if="servers.length" :data="servers" class="fingerprint-table">
-              <el-table-column :label="t('fingerprints.server')" width="220"><template #default="{ row }"><div class="fingerprint-server"><b>{{ row.name }}</b><code>{{ row.host }}:{{ row.port }}</code></div></template></el-table-column>
+              <el-table-column :label="t('fingerprints.server')" width="220"><template #default="{ row }"><div class="fingerprint-server"><b>{{ row.name }}</b><code>{{ displayServerHost(row.host) }}:{{ row.port }}</code></div></template></el-table-column>
               <el-table-column :label="t('fingerprints.savedFingerprint')" min-width="80"><template #default="{ row }"><code v-if="row.hostKeyFingerprint" class="fingerprint-value" :title="row.hostKeyFingerprint">{{ row.hostKeyFingerprint }}</code><el-text v-else type="info">{{ t('fingerprints.notRecorded') }}</el-text></template></el-table-column>
               <el-table-column width="96" align="right" fixed="right"><template #default="{ row }"><el-button link type="danger" :icon="Trash2" :disabled="!row.hostKeyFingerprint" @click="clearServerFingerprint(row)">{{ t('common.clear') }}</el-button></template></el-table-column>
             </el-table>
@@ -521,6 +522,8 @@ onBeforeUnmount(() => {
               <div class="settings-row"><el-form-item class="settings-address-field" :label="t('settings.listenAddress')"><el-input v-model="settingsForm.listenAddress" /></el-form-item><el-form-item class="settings-number-field" :label="t('settings.listenPort')"><el-input-number v-model="settingsForm.listenPort" class="port-input" :min="1" :max="65535" :controls="false" align="left" /></el-form-item></div>
               <el-divider />
               <h3>{{ t('settings.recoveryTitle') }}</h3><div class="settings-row"><el-form-item class="settings-number-field" :label="t('settings.reconnectDelay')"><el-input-number v-model="settingsForm.reconnectDelaySeconds" :min="1" :max="300" controls-position="right" /></el-form-item><el-form-item class="settings-switch-field" :label="t('settings.restoreServices')"><el-switch v-model="settingsForm.autoStartServices" /></el-form-item></div>
+              <el-divider />
+              <h3>{{ t('settings.privacyTitle') }}</h3><div class="settings-row"><el-form-item class="settings-switch-field" :label="t('settings.privacyMode')"><el-switch v-model="settingsForm.privacyMode" /></el-form-item></div>
               <el-divider />
               <h3>{{ t('settings.configTitle') }}</h3><el-text type="info">{{ t('settings.configHelp') }}</el-text>
               <div class="config-actions"><el-button :icon="Import" @click="importConfig">{{ t('settings.importSshConfig') }}</el-button><el-button :icon="FileInput" @click="importAppConfig">{{ t('settings.importAppConfig') }}</el-button><el-button :icon="FileOutput" @click="exportAppConfig">{{ t('settings.exportAppConfig') }}</el-button></div>

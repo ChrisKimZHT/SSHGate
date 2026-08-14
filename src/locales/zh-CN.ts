@@ -79,6 +79,8 @@ export default {
     recoveryTitle: '连接恢复',
     reconnectDelay: '重连间隔（秒）',
     restoreServices: '启动时恢复应用',
+    privacyTitle: '隐私模式',
+    privacyMode: '隐藏服务器主机 IP',
     configTitle: '配置管理',
     configHelp: '应用 Config 包含服务器、应用、设置和主机指纹，不包含密码或私钥口令。',
     importSshConfig: '导入 SSH Config',

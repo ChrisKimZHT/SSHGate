@@ -64,6 +64,8 @@ pub struct Settings {
     pub listen_port: u16,
     pub reconnect_delay_seconds: u64,
     pub auto_start_services: bool,
+    #[serde(default)]
+    pub privacy_mode: bool,
 }
 
 impl Default for Settings {
@@ -73,6 +75,7 @@ impl Default for Settings {
             listen_port: 80,
             reconnect_delay_seconds: 3,
             auto_start_services: true,
+            privacy_mode: false,
         }
     }
 }

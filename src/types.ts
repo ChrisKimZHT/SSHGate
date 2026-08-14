@@ -31,6 +31,7 @@ export interface Settings {
   listenPort: number
   reconnectDelaySeconds: number
   autoStartServices: boolean
+  privacyMode: boolean
 }
 
 export interface AppConfig {
