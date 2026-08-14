@@ -80,6 +80,15 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .terminal-host { width: 100%; height: 100%; }
 .terminal-status { position: absolute; z-index: 2; top: 9px; right: 13px; padding: 2px 6px; color: #697781; background: rgb(11 16 21 / 80%); font: 9px "Cascadia Code", Consolas, monospace; pointer-events: none; }
 
+.fingerprint-card { max-width: 1180px; margin: 0 auto; border-radius: 12px; }
+.fingerprint-card > .el-card__body { padding: 8px 20px; }
+.fingerprint-table::before, .fingerprint-table .el-table__inner-wrapper::before { display: none; }
+.fingerprint-table .el-table__row:last-child td.el-table__cell { border-bottom: 0; }
+.fingerprint-server { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.fingerprint-server b { color: var(--el-text-color-primary); font-size: 13px; }
+.fingerprint-server code { color: var(--el-text-color-secondary); font-size: 11px; }
+.fingerprint-value { display: block; color: var(--el-text-color-regular); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; user-select: text; }
+
 .settings-card { max-width: 760px; margin: 0 auto; border-radius: 12px; }
 .settings-card > .el-card__body { padding: 28px; }
 .settings-card h3 { margin: 0 0 7px; color: var(--el-text-color-primary); font-size: 15px; }

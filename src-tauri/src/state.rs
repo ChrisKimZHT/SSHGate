@@ -309,6 +309,20 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn clear_server_fingerprint(&self, server_id: &str) -> anyhow::Result<()> {
+        let mut config = self.0.config.write().await;
+        let server = config
+            .servers
+            .iter_mut()
+            .find(|server| server.id == server_id)
+            .ok_or_else(|| anyhow!("SSH 服务器不存在"))?;
+        server.host_key_fingerprint = None;
+        drop(config);
+        self.persist().await?;
+        self.emit_state().await;
+        Ok(())
+    }
+
     pub async fn save_service(&self, mut service: WebService) -> anyhow::Result<()> {
         service.name = service.name.trim().to_owned();
         service.remote_host = service.remote_host.trim().to_owned();

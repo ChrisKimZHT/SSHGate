@@ -4,7 +4,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type TagProps } from 'element-plus'
 import {
-  CirclePlus, ExternalLink, Import, Monitor, Pencil, Plus, RefreshCw,
+  CirclePlus, ExternalLink, Fingerprint, Import, Monitor, Pencil, Plus, RefreshCw,
   Server, Settings as Setting, TerminalSquare, Trash2,
 } from 'lucide-vue-next'
 import { api } from './api'
@@ -12,7 +12,7 @@ import TerminalPane from './components/TerminalPane.vue'
 import type { RuntimeSnapshot, Settings, SshServer, WebService } from './types'
 import { showError } from './utils/errorDialog'
 
-type Page = 'servers' | 'terminal' | 'settings'
+type Page = 'servers' | 'terminal' | 'fingerprints' | 'settings'
 interface TerminalTab { id: string; serverId: string; title: string; password?: string }
 type ServerForm = Omit<SshServer, 'port'> & { port?: number }
 type ServiceForm = Omit<WebService, 'remotePort'> & { remotePort?: number }
@@ -195,6 +195,17 @@ async function deleteService(service: Pick<WebService, 'id' | 'name'>) {
   catch { return }
   if (await run(() => api.removeService(service.id), '应用已删除')) serviceModal.value = false
 }
+async function clearServerFingerprint(server: SshServer) {
+  if (!server.hostKeyFingerprint) return
+  try {
+    await ElMessageBox.confirm(
+      `清除“${server.name}”当前保存的主机指纹？下次连接时将重新信任并保存服务器提供的新指纹。`,
+      '清除主机指纹',
+      { type: 'warning', confirmButtonText: '清除', cancelButtonText: '取消' },
+    )
+  } catch { return }
+  await run(() => api.clearServerFingerprint(server.id), '主机指纹已清除')
+}
 async function toggleService(service: WebService, enabled: boolean) {
   if (!enabled) {
     await run(() => api.stopService(service.id), '应用已停止')
@@ -305,6 +316,7 @@ onBeforeUnmount(() => unlistenState?.())
       <el-menu :default-active="page" class="nav-menu" @select="page = $event as Page">
         <el-menu-item index="servers"><Server :size="18" /><span>连接</span></el-menu-item>
         <el-menu-item index="terminal"><TerminalSquare :size="18" /><span>终端</span><el-tag v-if="terminalTabs.length" class="nav-counter" type="primary" effect="light" size="small" round>{{ terminalTabs.length }}</el-tag></el-menu-item>
+        <el-menu-item index="fingerprints"><Fingerprint :size="18" /><span>指纹</span></el-menu-item>
         <el-menu-item index="settings"><Setting :size="18" /><span>设置</span></el-menu-item>
       </el-menu>
       <div class="sidebar-footer">
@@ -316,7 +328,7 @@ onBeforeUnmount(() => unlistenState?.())
 
     <el-container class="content-shell">
       <el-header class="topbar">
-        <el-breadcrumb separator="/"><el-breadcrumb-item>SSHGate</el-breadcrumb-item><el-breadcrumb-item>{{ { servers: '连接', terminal: '终端', settings: '设置' }[page] }}</el-breadcrumb-item></el-breadcrumb>
+        <el-breadcrumb separator="/"><el-breadcrumb-item>SSHGate</el-breadcrumb-item><el-breadcrumb-item>{{ { servers: '连接', terminal: '终端', fingerprints: '指纹', settings: '设置' }[page] }}</el-breadcrumb-item></el-breadcrumb>
         <el-button circle text :icon="RefreshCw" title="刷新状态" @click="refresh" />
       </el-header>
       <el-main :class="['page-content', { 'terminal-content': page === 'terminal' }]">
@@ -347,6 +359,18 @@ onBeforeUnmount(() => unlistenState?.())
             <div class="terminal-toolbar"><el-button size="small" :icon="Plus" :disabled="!servers.length" @click="newTerminal">新建终端</el-button></div>
             <el-empty v-if="!terminalTabs.length" description="选择一台服务器打开内嵌 SSH 终端"><el-space wrap><el-button v-for="server in servers" :key="server.id" :icon="TerminalSquare" @click="openTerminal(server)">{{ server.name }}</el-button></el-space></el-empty>
           </div>
+        </template>
+
+        <template v-else-if="page === 'fingerprints'">
+          <div class="page-heading"><div><h1>指纹</h1><p>查看和管理 SSH 服务器当前保存的主机密钥指纹。</p></div></div>
+          <el-card shadow="never" class="fingerprint-card">
+            <el-table v-if="servers.length" :data="servers" class="fingerprint-table">
+              <el-table-column label="服务器" min-width="220"><template #default="{ row }"><div class="fingerprint-server"><b>{{ row.name }}</b><code>{{ row.host }}:{{ row.port }}</code></div></template></el-table-column>
+              <el-table-column label="已保存指纹" min-width="420"><template #default="{ row }"><code v-if="row.hostKeyFingerprint" class="fingerprint-value">{{ row.hostKeyFingerprint }}</code><el-text v-else type="info">尚未记录</el-text></template></el-table-column>
+              <el-table-column width="96" align="right"><template #default="{ row }"><el-button link type="danger" :icon="Trash2" :disabled="!row.hostKeyFingerprint" @click="clearServerFingerprint(row)">清除</el-button></template></el-table-column>
+            </el-table>
+            <el-empty v-else description="还没有 SSH 服务器" />
+          </el-card>
         </template>
 
         <template v-else>

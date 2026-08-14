@@ -66,6 +66,18 @@ async fn disconnect_server(
 }
 
 #[tauri::command]
+async fn clear_server_fingerprint(
+    state: State<'_, AppState>,
+    server_id: String,
+) -> CommandResult<RuntimeSnapshot> {
+    state
+        .clear_server_fingerprint(&server_id)
+        .await
+        .map_err(format_error)?;
+    Ok(state.snapshot().await)
+}
+
+#[tauri::command]
 async fn save_service(
     state: State<'_, AppState>,
     service: WebService,
@@ -220,6 +232,7 @@ pub fn run() {
             remove_server,
             connect_server,
             disconnect_server,
+            clear_server_fingerprint,
             save_service,
             remove_service,
             start_service,

@@ -9,6 +9,7 @@ export const api = {
   connectServer: (serverId: string, password?: string) =>
     invoke<RuntimeSnapshot>('connect_server', { serverId, password: password || null }),
   disconnectServer: (serverId: string) => invoke<RuntimeSnapshot>('disconnect_server', { serverId }),
+  clearServerFingerprint: (serverId: string) => invoke<RuntimeSnapshot>('clear_server_fingerprint', { serverId }),
   saveService: (service: WebService) => invoke<RuntimeSnapshot>('save_service', { service }),
   removeService: (serviceId: string) => invoke<RuntimeSnapshot>('remove_service', { serviceId }),
   startService: (serviceId: string, password?: string) =>
