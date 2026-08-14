@@ -1,56 +1,78 @@
 # SSHGate
 
-SSHGate 是一个轻量级 Tauri 2 桌面应用：把远端服务器的 Web 服务通过内嵌 SSH 会话映射到本机，并用 `*.localhost` 域名访问；同一 SSH 连接也承载内嵌终端。
+## 简介
 
-## MVP 功能
+SSHGate 是一个带**图形界面**的 SSH 端口转发工具。它通过 **SSH 端口映射**访问远端服务，并由本地**反向代理**将服务映射为易记的 `*.localhost` 地址。
 
-- 密钥、加密私钥口令或临时密码登录（口令和密码均不落盘）
-- 首次连接记录 SSH 主机密钥指纹，后续连接校验
-- 同一服务器的 Web channel 和 Terminal channel 复用一个 `russh` session
-- Rust 内置 HTTP/1.1 透明反向代理，支持流式响应和 WebSocket
-- `jupyter.gpu.localhost` 等多级 `.localhost` 域名，无需修改 hosts/DNS
-- xterm.js PTY、ANSI、UTF-8、Ctrl+C、Vim/tmux/top 和 window-change
-- 多终端标签、服务启停、私钥连接自动重连
-- JSON 配置持久化、应用配置导入导出及 `~/.ssh/config` 基础导入
+![UI Preview](./images/ui-preview.png)
 
-## 开发环境
+主要功能：
 
-需要 Node.js 20+、Rust 1.85+，以及 [Tauri 2 对应的平台依赖](https://v2.tauri.app/start/prerequisites/)。Windows 需要 WebView2（Windows 10/11 通常已包含）和 Microsoft C++ Build Tools。
+- 管理多个 SSH 服务器和远端应用
+- 使用 `应用名.服务器名.localhost` 访问远端 Web 服务
+- 支持 HTTP 流式响应和 WebSocket
+- 提供多标签交互式 SSH 终端
+- 支持应用启停、连接恢复和配置导入导出
+
+## 使用
+
+1. 在连接页添加 SSH 服务器，选择密钥或密码认证。
+2. 为服务器添加应用，填写远端主机和端口。
+3. 启动应用，通过生成的 `*.localhost` 地址访问远端服务。
+4. 如需命令行操作，可从服务器卡片打开终端。
+
+本地反向代理默认监听 `127.0.0.1:80`。端口被占用时，可在设置页修改监听端口；使用非 80 端口时，访问地址会自动附加端口号。
+
+## 安全
+
+- 本地代理默认只监听回环地址，不对局域网或公网开放。
+- 首次连接保存 SSH 主机密钥指纹，指纹变化时拒绝连接。
+- 配置文件只保存私钥路径，不复制或保存私钥内容。
+- 密码和私钥口令默认只在当前运行期间使用，选择记住后保存到**系统凭据库**。
+- 导出的应用 Config 不包含密码或私钥口令。
+
+## 实现
+
+桌面端基于 Tauri 2、Vue 3 和 Element Plus。Rust 后端使用 `russh` 与 Tokio 管理 SSH 会话，通过 SSH `direct-tcpip` channel 转发远端流量，并以内置 HTTP 反向代理按 `.localhost` 域名路由请求。同一服务器的应用和终端复用 SSH 会话，终端界面由 xterm.js 提供。
+
+应用版本以根目录 `package.json` 为单一来源，Tauri 在编译时自动写入二进制和安装包。
+
+## 开发
+
+需要 Node.js 20+、Rust 1.85+，以及 [Tauri 2 平台依赖](https://v2.tauri.app/start/prerequisites/)。
+
+安装依赖并启动开发模式：
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-如果刚安装 Rust/Build Tools 的 Windows 终端尚未刷新环境变量，可使用项目附带的包装脚本：
-
-```powershell
-.\scripts\tauri-msvc.cmd dev
-```
-
-仅检查前端：
+检查前端：
 
 ```bash
 npm run build
 ```
 
-检查 Rust：
+检查后端：
 
 ```bash
-cd src-tauri
-cargo test
-cargo check
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-## 使用
+构建发布版本：
 
-1. 添加服务器，选择私钥路径或密码认证。
-2. 连接服务器。首次连接会信任并保存服务器公钥指纹；指纹发生变化时连接会被拒绝。
-3. 添加 Web 服务，例如远端 `127.0.0.1:8888`，域名 `jupyter.gpu.localhost`。
-4. 启动服务，再用 Open 按钮访问。
+```bash
+npm run tauri build
+```
 
-本地代理默认绑定 `127.0.0.1:80`。若端口 80 已被占用，设置页会显示错误；可释放端口后保存设置重试，或改用其他端口（此时 URL 会自动带端口）。部分 Linux 环境限制普通用户绑定 1024 以下端口，需要为二进制授予 `CAP_NET_BIND_SERVICE` 或将系统的非特权端口下限调低。
+仅构建可执行文件，不生成安装包：
 
-## 配置与安全
+```bash
+npm run tauri build -- --no-bundle
+```
 
-配置保存在 Tauri 的应用配置目录 `app.sshgate.desktop/config.json`。设置页可导入或导出完整应用 Config；文件只记录私钥路径，不记录私钥内容、私钥口令或密码。当前 MVP 不支持 SSH agent、ProxyJump 和 HTTPS 本地入口。
+## 贡献
+
+该项目**几乎处处**由 Codex 完成，因此接受任何形式的贡献，欢迎提交 PR 或 Issues。
