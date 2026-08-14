@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { getVersion } from '@tauri-apps/api/app'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -42,6 +43,7 @@ const originalRememberSecret = ref(false)
 const passwordByServer = reactive<Record<string, string>>({})
 const terminalTabs = ref<TerminalTab[]>([])
 const activeTerminalId = ref('')
+const appVersion = ref('')
 const sortMode = ref(false)
 const sortSaving = ref(false)
 const sortedServerIds = ref<string[]>([])
@@ -420,8 +422,10 @@ async function exportAppConfig() {
 onMounted(async () => {
   document.documentElement.classList.remove('dark')
   localStorage.removeItem('sshgate-theme')
+  const versionPromise = getVersion().catch(() => '')
   unlistenState = await listen<RuntimeSnapshot>('state-changed', ({ payload }) => { snapshot.value = payload })
   await refresh()
+  appVersion.value = await versionPromise
 })
 onBeforeUnmount(() => {
   window.clearTimeout(settingsSaveTimer)
@@ -432,7 +436,7 @@ onBeforeUnmount(() => {
 <template>
   <el-container class="app-frame">
     <el-aside width="232px" class="app-sidebar">
-      <div class="brand"><span class="brand-icon"><TerminalSquare :size="20" /></span><div><strong>SSHGate</strong><small>{{ t('brand.tagline') }}</small></div></div>
+      <div class="brand"><span class="brand-icon"><TerminalSquare :size="20" /></span><div><strong>SSHGate</strong><small>{{ appVersion ? t('brand.version', { version: appVersion }) : '' }}</small></div></div>
       <el-menu :default-active="page" class="nav-menu" @select="page = $event as Page">
         <el-menu-item index="servers"><Server :size="18" /><span>{{ t('nav.connections') }}</span><el-tag v-if="runningServiceCount" class="nav-counter" type="success" effect="light" size="small" round>{{ runningServiceCount }}</el-tag></el-menu-item>
         <el-menu-item index="terminal"><TerminalSquare :size="18" /><span>{{ t('nav.terminal') }}</span><el-tag v-if="terminalTabs.length" class="nav-counter" type="primary" effect="light" size="small" round>{{ terminalTabs.length }}</el-tag></el-menu-item>

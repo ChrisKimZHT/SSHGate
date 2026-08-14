@@ -1,6 +1,6 @@
 export default {
   brand: {
-    tagline: 'Secure local gateway',
+    version: 'v{version}',
   },
   nav: {
     connections: '连接',
