@@ -4,7 +4,7 @@ SSHGate 是一个轻量级 Tauri 2 桌面应用：把远端服务器的 Web 服�
 
 ## MVP 功能
 
-- SSH 私钥、加密私钥口令或临时密码登录（口令和密码均不落盘）
+- 密钥、加密私钥口令或临时密码登录（口令和密码均不落盘）
 - 首次连接记录 SSH 主机密钥指纹，后续连接校验
 - 同一服务器的 Web channel 和 Terminal channel 复用一个 `russh` session
 - Rust 内置 HTTP/1.1 透明反向代理，支持流式响应和 WebSocket
@@ -53,4 +53,4 @@ cargo check
 
 ## 配置与安全
 
-配置保存在 Tauri 的应用配置目录 `app.sshgate.desktop/config.json`。文件只记录私钥路径，不记录私钥内容、私钥口令或 SSH 密码。当前 MVP 不支持 SSH agent、ProxyJump 和 HTTPS 本地入口。
+配置保存在 Tauri 的应用配置目录 `app.sshgate.desktop/config.json`。文件只记录私钥路径，不记录私钥内容、私钥口令或密码。当前 MVP 不支持 SSH agent、ProxyJump 和 HTTPS 本地入口。

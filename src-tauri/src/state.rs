@@ -173,7 +173,7 @@ impl AppState {
                 self.set_server_services_state(
                     &server_id,
                     ServiceStatus::Error,
-                    Some("未保存 SSH 密码，请手动重新连接".into()),
+                    Some("未保存密码，请手动重新连接".into()),
                 )
                 .await;
             }
@@ -224,7 +224,7 @@ impl AppState {
                     return Err(anyhow!(
                         "请输入要保存到系统凭据库的{}",
                         if server.auth_type == AuthType::Password {
-                            "SSH 密码"
+                            "密码"
                         } else {
                             "私钥口令"
                         }
@@ -659,7 +659,7 @@ impl AppState {
                 AuthType::Password => {
                     let password = password
                         .filter(|value| !value.is_empty())
-                        .ok_or_else(|| anyhow!("请输入 SSH 密码"))?;
+                        .ok_or_else(|| anyhow!("请输入密码"))?;
                     Ok(handle
                         .authenticate_password(server.username.clone(), password)
                         .await?

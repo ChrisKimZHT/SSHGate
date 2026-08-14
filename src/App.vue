@@ -14,6 +14,13 @@ import { showError } from './utils/errorDialog'
 
 type Page = 'servers' | 'terminal' | 'settings'
 interface TerminalTab { id: string; serverId: string; title: string; password?: string }
+type ServerForm = Omit<SshServer, 'port'> & { port?: number }
+type ServiceForm = Omit<WebService, 'remotePort'> & { remotePort?: number }
+
+const DEFAULT_SERVER_PORT = 22
+const DEFAULT_PRIVATE_KEY_PATH = '~/.ssh/id_ed25519'
+const DEFAULT_REMOTE_HOST = '127.0.0.1'
+const DEFAULT_REMOTE_PORT = 3000
 
 const page = ref<Page>('servers')
 const snapshot = ref<RuntimeSnapshot>()
@@ -33,26 +40,24 @@ const terminalTabs = ref<TerminalTab[]>([])
 const activeTerminalId = ref('')
 let unlistenState: UnlistenFn | undefined
 
-const blankServer = (): SshServer => ({
-  id: crypto.randomUUID(), name: '', host: '', port: 22, username: '', authType: 'key', privateKeyPath: '~/.ssh/id_ed25519', rememberSecret: false,
+const blankServer = (): ServerForm => ({
+  id: crypto.randomUUID(), name: '', host: '', port: undefined, username: '', authType: 'key', privateKeyPath: '', rememberSecret: false, hostKeyFingerprint: null,
 })
-const blankService = (serverId = ''): WebService => ({
-  id: crypto.randomUUID(), serverId, name: '', remoteHost: '127.0.0.1', remotePort: 3000, domain: '', desiredRunning: false,
+const blankService = (serverId = ''): ServiceForm => ({
+  id: crypto.randomUUID(), serverId, name: '', remoteHost: '', remotePort: undefined, domain: '', desiredRunning: false,
 })
-const serverForm = reactive<SshServer>(blankServer())
-const serviceForm = reactive<WebService>(blankService())
+const serverForm = reactive<ServerForm>(blankServer())
+const serviceForm = reactive<ServiceForm>(blankService())
 const settingsForm = reactive<Settings>({ listenAddress: '127.0.0.1', listenPort: 80, reconnectDelaySeconds: 3, autoStartServices: true })
 
 const serverRules: FormRules = {
   name: [{ required: true, message: '请输入服务器名称', trigger: 'blur' }],
   host: [{ required: true, message: '请输入主机地址', trigger: 'blur' }],
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  privateKeyPath: [{ required: true, message: '请输入私钥路径', trigger: 'blur' }],
 }
 const serviceRules: FormRules = {
   name: [{ required: true, message: '请输入应用名称', trigger: 'blur' }],
   serverId: [{ required: true, message: '请选择 SSH 服务器', trigger: 'change' }],
-  remoteHost: [{ required: true, message: '请输入远端主机', trigger: 'blur' }],
 }
 
 const servers = computed(() => snapshot.value?.config.servers ?? [])
@@ -111,7 +116,10 @@ function showAddServer() {
   nextTick(() => serverFormRef.value?.clearValidate())
 }
 function showEditServer(server: SshServer) {
-  Object.assign(serverForm, server)
+  Object.assign(serverForm, server, {
+    port: server.port === DEFAULT_SERVER_PORT ? undefined : server.port,
+    privateKeyPath: server.privateKeyPath === DEFAULT_PRIVATE_KEY_PATH ? '' : server.privateKeyPath,
+  })
   serverSecret.value = ''
   originalServerAuthType.value = server.authType
   originalRememberSecret.value = server.rememberSecret
@@ -126,8 +134,10 @@ function defaultDomainPrefix() {
   return `${normalizeDomainLabel(serviceForm.name, 'service')}.${normalizeDomainLabel(server?.name ?? '', 'server')}`
 }
 function effectiveServiceDomain() { return `${normalizeDomainPrefix(serviceDomainPrefix.value) || defaultDomainPrefix()}.localhost` }
+function effectiveRemoteHost() { return serviceForm.remoteHost.trim() || DEFAULT_REMOTE_HOST }
+function effectiveRemotePort() { return serviceForm.remotePort ?? DEFAULT_REMOTE_PORT }
 function showAddService(serverId = servers.value[0]?.id ?? '') { Object.assign(serviceForm, blankService(serverId)); serviceDomainPrefix.value = ''; serviceEditing.value = false; serviceModal.value = true; nextTick(() => serviceFormRef.value?.clearValidate()) }
-function showEditService(service: WebService) { Object.assign(serviceForm, service); serviceDomainPrefix.value = service.domain.replace(/\.localhost\.?$/i, ''); serviceEditing.value = true; serviceModal.value = true; nextTick(() => serviceFormRef.value?.clearValidate()) }
+function showEditService(service: WebService) { Object.assign(serviceForm, service, { remoteHost: service.remoteHost === DEFAULT_REMOTE_HOST ? '' : service.remoteHost, remotePort: service.remotePort === DEFAULT_REMOTE_PORT ? undefined : service.remotePort }); serviceDomainPrefix.value = service.domain.replace(/\.localhost\.?$/i, ''); serviceEditing.value = true; serviceModal.value = true; nextTick(() => serviceFormRef.value?.clearValidate()) }
 
 async function run(action: () => Promise<RuntimeSnapshot | void>, success?: string) {
   try {
@@ -142,30 +152,45 @@ async function run(action: () => Promise<RuntimeSnapshot | void>, success?: stri
 }
 async function submitServer() {
   if (!await serverFormRef.value?.validate().catch(() => false)) return
+  const serverId = serverForm.id
+  const temporarySecret = serverSecret.value
+  const resolvedServer: SshServer = {
+    ...serverForm,
+    port: serverForm.port ?? DEFAULT_SERVER_PORT,
+    privateKeyPath: serverForm.authType === 'key'
+      ? serverForm.privateKeyPath.trim() || DEFAULT_PRIVATE_KEY_PATH
+      : serverForm.privateKeyPath.trim(),
+  }
   const needsNewSecret = serverForm.rememberSecret
-    && !serverSecret.value
+    && !temporarySecret
     && (!serverEditing.value || !originalRememberSecret.value || originalServerAuthType.value !== serverForm.authType)
   if (needsNewSecret) {
-    ElMessage.warning(`请输入要保存的${serverForm.authType === 'password' ? ' SSH 密码' : '私钥口令'}`)
+    ElMessage.warning(`请输入要保存的${serverForm.authType === 'password' ? '密码' : '私钥口令'}`)
     return
   }
-  if (await run(() => api.saveServer({ ...serverForm }, serverSecret.value), '服务器已保存')) {
-    delete passwordByServer[serverForm.id]
+  if (await run(() => api.saveServer(resolvedServer, temporarySecret), '服务器已保存')) {
+    if (temporarySecret && !serverForm.rememberSecret) passwordByServer[serverId] = temporarySecret
+    else delete passwordByServer[serverId]
     serverSecret.value = ''
     serverModal.value = false
   }
 }
 async function submitService() {
-  serviceForm.domain = effectiveServiceDomain()
   if (!await serviceFormRef.value?.validate().catch(() => false)) return
-  if (await run(() => api.saveService({ ...serviceForm }), '应用已保存')) serviceModal.value = false
+  const resolvedService: WebService = {
+    ...serviceForm,
+    remoteHost: effectiveRemoteHost(),
+    remotePort: effectiveRemotePort(),
+    domain: effectiveServiceDomain(),
+  }
+  if (await run(() => api.saveService(resolvedService), '应用已保存')) serviceModal.value = false
 }
-async function deleteServer(server: SshServer) {
+async function deleteServer(server: Pick<SshServer, 'id' | 'name'>) {
   try { await ElMessageBox.confirm(`删除“${server.name}”及其全部应用？`, '删除服务器', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }) }
   catch { return }
   if (await run(() => api.removeServer(server.id), '服务器已删除')) serverModal.value = false
 }
-async function deleteService(service: WebService) {
+async function deleteService(service: Pick<WebService, 'id' | 'name'>) {
   try { await ElMessageBox.confirm(`确定删除应用“${service.name}”？`, '删除应用', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }) }
   catch { return }
   if (await run(() => api.removeService(service.id), '应用已删除')) serviceModal.value = false
@@ -190,11 +215,10 @@ async function copyDomain(service: WebService) { await navigator.clipboard.write
 async function askConnectionSecret(server: SshServer, required: boolean) {
   try {
     const { value } = await ElMessageBox.prompt(
-      server.authType === 'key' ? '该私钥已加密，请输入私钥口令。口令仅用于本次运行，不会保存。' : '请输入 SSH 密码。密码仅用于本次运行，不会保存。',
-      server.authType === 'key' ? '私钥口令' : 'SSH 密码',
+      server.authType === 'key' ? '该私钥已加密，请输入私钥口令。口令仅用于本次运行，不会保存。' : '请输入密码。密码仅用于本次运行，不会保存。',
+      server.authType === 'key' ? '私钥口令' : '密码',
       {
         confirmButtonText: '连接', cancelButtonText: '取消', inputType: 'password',
-        inputPlaceholder: server.authType === 'key' ? '私钥口令' : 'SSH 密码',
         inputValidator: (input) => !required || Boolean(input) || '请输入密码',
       },
     )
@@ -301,10 +325,8 @@ onBeforeUnmount(() => unlistenState?.())
           <el-skeleton :loading="loading" animated :rows="6">
             <div v-if="servers.length" class="server-grid">
               <el-card v-for="server in servers" :key="server.id" shadow="hover" class="server-card">
-                <template #header><div class="server-header"><el-avatar shape="square" :size="44"><Server :size="22" /></el-avatar><div class="server-title"><h3>{{ server.name }}</h3><code class="server-address">{{ server.username }}@{{ server.host }}:{{ server.port }}</code></div><el-tag :type="stateType(serverState(server.id).status)" effect="light" round>{{ stateLabel(serverState(server.id).status) }}</el-tag><el-button text circle title="编辑服务器" @click="showEditServer(server)"><Setting :size="16" /></el-button></div></template>
-                <el-input v-if="serverState(server.id).status !== 'connected' && !server.rememberSecret" v-model="passwordByServer[server.id]" class="password-input" type="password" show-password :placeholder="server.authType === 'key' ? '私钥口令（未加密可留空，仅本次使用）' : 'SSH 密码（仅本次使用）'" />
-                <div class="server-actions"><el-space wrap><el-button :icon="TerminalSquare" @click="openTerminal(server)">打开终端</el-button><el-button :icon="CirclePlus" @click="showAddService(server.id)">添加应用</el-button></el-space><div v-if="servicesFor(server.id).length" class="all-apps-toggle"><span>全部应用</span><el-switch :model-value="allServerAppsEnabled(server.id)" :loading="serverAppsStarting(server.id)" aria-label="启停全部应用" @change="toggleAllServerApps(server, Boolean($event))" /></div></div>
-                <el-divider content-position="left">应用 · {{ servicesFor(server.id).length }}</el-divider>
+                <template #header><div class="server-header"><el-avatar shape="square" :size="44"><Server :size="22" /></el-avatar><div class="server-title"><h3>{{ server.name }}</h3><code class="server-address">{{ server.username }}@{{ server.host }}:{{ server.port }}</code></div><el-tag :type="stateType(serverState(server.id).status)" effect="light" round>{{ stateLabel(serverState(server.id).status) }}</el-tag><div class="server-header-actions"><el-button text circle :icon="TerminalSquare" title="打开终端" aria-label="打开终端" @click="openTerminal(server)" /><el-button text circle :icon="CirclePlus" title="添加应用" aria-label="添加应用" @click="showAddService(server.id)" /><el-button text circle title="编辑服务器" aria-label="编辑服务器" @click="showEditServer(server)"><Setting :size="16" /></el-button><el-switch v-if="servicesFor(server.id).length" :model-value="allServerAppsEnabled(server.id)" :loading="serverAppsStarting(server.id)" :title="allServerAppsEnabled(server.id) ? '停止全部应用' : '启动全部应用'" :aria-label="allServerAppsEnabled(server.id) ? '停止全部应用' : '启动全部应用'" @change="toggleAllServerApps(server, Boolean($event))" /></div></div></template>
+                <el-input v-if="server.authType === 'password' && serverState(server.id).status !== 'connected' && !server.rememberSecret" v-model="passwordByServer[server.id]" class="password-input" type="password" show-password />
                 <el-empty v-if="!servicesFor(server.id).length" :image-size="46" description="尚未添加应用" />
                 <el-table v-else :data="servicesFor(server.id)" size="small" :show-header="false" class="embedded-table">
                   <el-table-column min-width="170"><template #default="{ row }"><div class="service-name"><b>{{ row.name }}</b><el-link type="primary" :underline="false" @click="copyDomain(row)">{{ row.domain }}</el-link></div></template></el-table-column>
@@ -332,7 +354,7 @@ onBeforeUnmount(() => unlistenState?.())
           <el-card shadow="never" class="settings-card">
             <el-form :model="settingsForm" label-position="top">
               <h3>HTTP 反向代理</h3><el-text type="info">端口 80 可直接使用 http://*.localhost；端口被占用时可在这里修改。</el-text>
-              <el-row :gutter="20" class="settings-row"><el-col :span="14"><el-form-item label="监听地址"><el-input v-model="settingsForm.listenAddress" /></el-form-item></el-col><el-col :span="10"><el-form-item label="监听端口"><el-input-number v-model="settingsForm.listenPort" :min="1" :max="65535" controls-position="right" /></el-form-item></el-col></el-row>
+              <el-row :gutter="20" class="settings-row"><el-col :span="14"><el-form-item label="监听地址"><el-input v-model="settingsForm.listenAddress" /></el-form-item></el-col><el-col :span="10"><el-form-item label="监听端口"><el-input-number v-model="settingsForm.listenPort" class="port-input" :min="1" :max="65535" controls-position="right" align="left" /></el-form-item></el-col></el-row>
               <el-divider />
               <h3>连接恢复</h3><el-row :gutter="20" class="settings-row"><el-col :span="12"><el-form-item label="重连间隔（秒）"><el-input-number v-model="settingsForm.reconnectDelaySeconds" :min="1" :max="300" controls-position="right" /></el-form-item></el-col><el-col :span="12"><el-form-item label="启动时恢复应用"><el-switch v-model="settingsForm.autoStartServices" inline-prompt active-text="开启" inactive-text="关闭" /></el-form-item></el-col></el-row>
               <div class="form-footer"><el-button type="primary" @click="saveSettings">保存设置</el-button></div>
@@ -342,24 +364,23 @@ onBeforeUnmount(() => unlistenState?.())
       </el-main>
     </el-container>
 
-    <el-dialog v-model="serverModal" :title="serverEditing ? '编辑服务器' : '添加服务器'" width="560px" destroy-on-close @closed="clearServerSecret">
+    <el-dialog v-model="serverModal" :title="serverEditing ? '编辑服务器' : '添加服务器'" width="560px" class="server-dialog" align-center destroy-on-close @closed="clearServerSecret">
       <el-form ref="serverFormRef" :model="serverForm" :rules="serverRules" label-position="top">
-        <el-form-item label="名称" prop="name"><el-input v-model="serverForm.name" placeholder="GPU Server" /></el-form-item>
-        <el-row :gutter="16"><el-col :span="18"><el-form-item label="主机" prop="host"><el-input v-model="serverForm.host" placeholder="192.168.1.100" /></el-form-item></el-col><el-col :span="6"><el-form-item label="端口"><el-input-number v-model="serverForm.port" :min="1" :max="65535" :controls="false" /></el-form-item></el-col></el-row>
-        <el-row :gutter="16"><el-col :span="14"><el-form-item label="用户名" prop="username"><el-input v-model="serverForm.username" placeholder="root" /></el-form-item></el-col><el-col :span="10"><el-form-item label="认证方式"><el-select v-model="serverForm.authType" @change="serverAuthChanged"><el-option label="SSH 私钥" value="key" /><el-option label="SSH 密码" value="password" /></el-select></el-form-item></el-col></el-row>
-        <el-form-item v-if="serverForm.authType === 'key'" label="私钥路径" prop="privateKeyPath"><el-input v-model="serverForm.privateKeyPath" placeholder="~/.ssh/id_ed25519" /><div class="form-help">仅保存路径，不复制私钥内容。</div></el-form-item>
-        <el-form-item class="secret-form-item" :label="serverForm.authType === 'password' ? 'SSH 密码' : '私钥口令（可选）'"><el-input v-model="serverSecret" type="password" show-password autocomplete="new-password" :placeholder="serverEditing && originalRememberSecret && originalServerAuthType === serverForm.authType ? '已安全保存，留空则保持不变' : '输入本次使用的凭据'" /><div class="secret-options"><el-checkbox v-model="serverForm.rememberSecret">保存到系统凭据库</el-checkbox><span>配置文件不会保存明文</span></div></el-form-item>
-        <el-descriptions v-if="serverForm.hostKeyFingerprint" :column="1" border size="small"><el-descriptions-item label="已信任主机指纹"><code>{{ serverForm.hostKeyFingerprint }}</code></el-descriptions-item></el-descriptions>
+        <el-form-item label="名称" prop="name"><el-input v-model="serverForm.name" /></el-form-item>
+        <el-row :gutter="16"><el-col :span="18"><el-form-item label="主机" prop="host"><el-input v-model="serverForm.host" /></el-form-item></el-col><el-col :span="6"><el-form-item label="端口"><el-input-number v-model="serverForm.port" class="port-input" :min="1" :max="65535" :controls="false" :placeholder="String(DEFAULT_SERVER_PORT)" align="left" /></el-form-item></el-col></el-row>
+        <el-row :gutter="16"><el-col :span="18"><el-form-item label="用户名" prop="username"><el-input v-model="serverForm.username" /></el-form-item></el-col><el-col :span="6"><el-form-item label="认证方式"><el-select v-model="serverForm.authType" @change="serverAuthChanged"><el-option label="密钥" value="key" /><el-option label="密码" value="password" /></el-select></el-form-item></el-col></el-row>
+        <el-form-item v-if="serverForm.authType === 'key'" label="私钥路径"><el-input v-model="serverForm.privateKeyPath" :placeholder="DEFAULT_PRIVATE_KEY_PATH" /><div class="form-help">仅保存路径，不复制私钥内容。</div></el-form-item>
+        <el-form-item class="secret-form-item" :label="serverForm.authType === 'password' ? '密码' : '私钥口令'"><el-input v-model="serverSecret" type="password" show-password autocomplete="new-password" /><div class="secret-options"><el-checkbox v-model="serverForm.rememberSecret">保存到系统凭据库</el-checkbox><span>配置文件不会保存明文</span></div></el-form-item>
       </el-form>
       <template #footer><div class="dialog-footer"><el-button v-if="serverEditing" type="danger" plain :icon="Trash2" @click="deleteServer(serverForm)">删除</el-button><span /><el-button @click="serverModal = false">取消</el-button><el-button type="primary" @click="submitServer">保存</el-button></div></template>
     </el-dialog>
 
-    <el-dialog v-model="serviceModal" :title="serviceEditing ? '编辑应用' : '添加应用'" width="560px" destroy-on-close>
+    <el-dialog v-model="serviceModal" :title="serviceEditing ? '编辑应用' : '添加应用'" width="560px" align-center destroy-on-close>
       <el-form ref="serviceFormRef" :model="serviceForm" :rules="serviceRules" label-position="top">
-        <el-row :gutter="16"><el-col :span="14"><el-form-item label="名称" prop="name"><el-input v-model="serviceForm.name" placeholder="Jupyter" /></el-form-item></el-col><el-col :span="10"><el-form-item label="SSH 服务器" prop="serverId"><el-select v-model="serviceForm.serverId"><el-option v-for="server in servers" :key="server.id" :label="server.name" :value="server.id" /></el-select></el-form-item></el-col></el-row>
-        <el-row :gutter="16"><el-col :span="16"><el-form-item label="远端主机" prop="remoteHost"><el-input v-model="serviceForm.remoteHost" /></el-form-item></el-col><el-col :span="8"><el-form-item label="远端端口"><el-input-number v-model="serviceForm.remotePort" :min="1" :max="65535" :controls="false" /></el-form-item></el-col></el-row>
+        <el-row :gutter="16"><el-col :span="18"><el-form-item label="名称" prop="name"><el-input v-model="serviceForm.name" /></el-form-item></el-col><el-col :span="6"><el-form-item label="SSH 服务器" prop="serverId"><el-select v-model="serviceForm.serverId"><el-option v-for="server in servers" :key="server.id" :label="server.name" :value="server.id" /></el-select></el-form-item></el-col></el-row>
+        <el-row :gutter="16"><el-col :span="18"><el-form-item label="远端主机"><el-input v-model="serviceForm.remoteHost" :placeholder="DEFAULT_REMOTE_HOST" /></el-form-item></el-col><el-col :span="6"><el-form-item label="远端端口"><el-input-number v-model="serviceForm.remotePort" class="port-input" :min="1" :max="65535" :controls="false" :placeholder="String(DEFAULT_REMOTE_PORT)" align="left" /></el-form-item></el-col></el-row>
         <el-form-item label="访问域名"><el-input v-model="serviceDomainPrefix" :placeholder="defaultDomainPrefix()"><template #prepend>http://</template><template #append>.localhost</template></el-input><div class="form-help">可留空，默认使用“应用名.服务器名.localhost”；保存时会自动小写并规范化字符。</div></el-form-item>
-        <el-alert type="info" :closable="false" show-icon><template #title><span class="route-summary"><Monitor :size="14" />浏览器 → <code>{{ effectiveServiceDomain() }}</code> → SSH → <code>{{ serviceForm.remoteHost }}:{{ serviceForm.remotePort }}</code></span></template></el-alert>
+        <el-alert type="info" :closable="false" show-icon><template #title><span class="route-summary"><Monitor :size="14" />浏览器 → <code>{{ effectiveServiceDomain() }}</code> → SSH → <code>{{ effectiveRemoteHost() }}:{{ effectiveRemotePort() }}</code></span></template></el-alert>
       </el-form>
       <template #footer><div class="dialog-footer"><el-button v-if="serviceEditing" type="danger" plain :icon="Trash2" @click="deleteService(serviceForm)">删除</el-button><span /><el-button @click="serviceModal = false">取消</el-button><el-button type="primary" @click="submitService">保存</el-button></div></template>
     </el-dialog>

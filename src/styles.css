@@ -45,20 +45,21 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 
 .server-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr)); gap: 20px; max-width: 1180px; margin: 0 auto; }
 .server-card { border-radius: 12px; }
-.server-card .el-card__header { padding: 18px 20px; }
-.server-card .el-card__body { padding: 18px 20px; }
+.server-card .el-card__header { padding: 18px 20px 12px; border-bottom: 0; }
+.server-card .el-card__body { padding: 8px 20px 18px; }
 .server-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; }
 .server-header .el-avatar { flex: 0 0 auto; color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.server-header-actions { display: inline-flex; align-items: center; gap: 2px; }
+.server-header-actions .el-switch { margin-left: 6px; }
+.server-header-actions .el-button + .el-button { margin-left: 0; }
 .server-title { display: grid; min-width: 0; align-content: center; gap: 4px; }
 .server-title h3 { overflow: hidden; margin: 0; color: var(--el-text-color-primary); font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
 .server-address { display: block; overflow: hidden; width: 100%; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.35; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .password-input { margin: 14px 0 0; }
-.server-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; }
-.all-apps-toggle { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 9px; margin-left: auto; color: var(--el-text-color-regular); font-size: 13px; }
-.server-card .el-divider { margin: 22px 0 12px; }
 .server-card .el-empty { padding: 12px 0 2px; }
 .embedded-table::before { display: none; }
 .embedded-table .el-table__inner-wrapper::before { display: none; }
+.embedded-table .el-table__row:last-child td.el-table__cell { border-bottom: 0; }
 .service-name { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
 .service-name b { overflow: hidden; color: var(--el-text-color-primary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .service-name .el-link { align-self: flex-start; max-width: 100%; font: 11px "Cascadia Code", Consolas, monospace; }
@@ -84,11 +85,16 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .settings-card h3 { margin: 0 0 7px; color: var(--el-text-color-primary); font-size: 15px; }
 .settings-row { margin-top: 22px; }
 .settings-card .el-input-number { width: 100%; }
+.port-input { width: 100%; }
 .form-footer { margin-top: 28px; text-align: right; }
 
+.el-dialog { --el-dialog-padding-primary: 24px; }
+.el-message-box { --el-messagebox-padding-primary: 18px; }
 .el-dialog__header { padding-bottom: 16px; border-bottom: 1px solid var(--el-border-color-lighter); }
 .el-dialog__body { padding: 20px 0; }
 .el-dialog__footer { padding-top: 16px; border-top: 1px solid var(--el-border-color-lighter); }
+.server-dialog { display: flex; max-height: calc(100vh - 40px); flex-direction: column; }
+.server-dialog .el-dialog__body { min-height: 0; overflow-x: hidden; overflow-y: auto; }
 .dialog-footer { display: flex; align-items: center; gap: 12px; }
 .dialog-footer > span { flex: 1; }
 .dialog-footer .el-button + .el-button { margin-left: 0; }
