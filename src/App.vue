@@ -350,16 +350,14 @@ onBeforeUnmount(() => unlistenState?.())
           </el-skeleton>
         </template>
 
-        <template v-else-if="page === 'terminal'">
-          <div class="terminal-workspace">
-            <el-tabs v-if="terminalTabs.length" v-model="activeTerminalId" type="card" closable class="terminal-tabs" @tab-remove="closeTerminal(String($event))">
-              <el-tab-pane v-for="tab in terminalTabs" :key="tab.id" :name="tab.id" :label="tab.title"><TerminalPane :terminal-id="tab.id" :server-id="tab.serverId" :password="tab.password" @closed="closeTerminal(tab.id)" /></el-tab-pane>
-            </el-tabs>
-            <el-empty v-if="!terminalTabs.length" description="请从连接页选择服务器打开终端" />
-          </div>
-        </template>
+        <div v-show="page === 'terminal'" class="terminal-workspace">
+          <el-tabs v-if="terminalTabs.length" v-model="activeTerminalId" type="card" closable class="terminal-tabs" @tab-remove="closeTerminal(String($event))">
+            <el-tab-pane v-for="tab in terminalTabs" :key="tab.id" :name="tab.id" :label="tab.title"><TerminalPane :terminal-id="tab.id" :server-id="tab.serverId" :password="tab.password" @closed="closeTerminal(tab.id)" /></el-tab-pane>
+          </el-tabs>
+          <el-empty v-if="!terminalTabs.length" description="请从连接页选择服务器打开终端" />
+        </div>
 
-        <template v-else-if="page === 'fingerprints'">
+        <template v-if="page === 'fingerprints'">
           <div class="page-heading"><div><h1>指纹</h1><p>查看和管理 SSH 服务器当前保存的主机密钥指纹。</p></div></div>
           <el-card shadow="never" class="fingerprint-card">
             <el-table v-if="servers.length" :data="servers" class="fingerprint-table">
@@ -371,7 +369,7 @@ onBeforeUnmount(() => unlistenState?.())
           </el-card>
         </template>
 
-        <template v-else>
+        <template v-if="page === 'settings'">
           <div class="page-heading"><div><h1>设置</h1><p>调整本地代理入口和连接恢复行为。</p></div></div>
           <el-card shadow="never" class="settings-card">
             <el-form :model="settingsForm" label-position="top">

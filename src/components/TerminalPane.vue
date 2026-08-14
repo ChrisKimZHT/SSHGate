@@ -31,7 +31,7 @@ function decodeBase64(value: string) {
 }
 
 async function fitAndResize(send = true) {
-  if (!terminal || !fitAddon) return
+  if (!terminal || !fitAddon || !host.value?.clientWidth || !host.value?.clientHeight) return
   fitAddon.fit()
   if (send) await api.terminalResize(props.terminalId, terminal.cols, terminal.rows).catch(() => undefined)
 }
