@@ -70,6 +70,7 @@ const serviceRules = computed<FormRules>(() => ({
 const servers = computed(() => snapshot.value?.config.servers ?? [])
 const services = computed(() => snapshot.value?.config.services ?? [])
 const proxyHealthy = computed(() => !snapshot.value?.proxyError)
+const runningServiceCount = computed(() => services.value.filter((service) => serviceState(service.id).status === 'running').length)
 
 function syncSettingsForm(settings: Settings) {
   window.clearTimeout(settingsSaveTimer)
@@ -384,7 +385,7 @@ onBeforeUnmount(() => {
     <el-aside width="232px" class="app-sidebar">
       <div class="brand"><span class="brand-icon"><TerminalSquare :size="20" /></span><div><strong>SSHGate</strong><small>{{ t('brand.tagline') }}</small></div></div>
       <el-menu :default-active="page" class="nav-menu" @select="page = $event as Page">
-        <el-menu-item index="servers"><Server :size="18" /><span>{{ t('nav.connections') }}</span></el-menu-item>
+        <el-menu-item index="servers"><Server :size="18" /><span>{{ t('nav.connections') }}</span><el-tag v-if="runningServiceCount" class="nav-counter" type="success" effect="light" size="small" round>{{ runningServiceCount }}</el-tag></el-menu-item>
         <el-menu-item index="terminal"><TerminalSquare :size="18" /><span>{{ t('nav.terminal') }}</span><el-tag v-if="terminalTabs.length" class="nav-counter" type="primary" effect="light" size="small" round>{{ terminalTabs.length }}</el-tag></el-menu-item>
         <el-menu-item index="fingerprints"><Fingerprint :size="18" /><span>{{ t('nav.fingerprints') }}</span></el-menu-item>
         <el-menu-item index="settings"><Setting :size="18" /><span>{{ t('nav.settings') }}</span></el-menu-item>
