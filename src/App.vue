@@ -284,7 +284,6 @@ function closeTerminal(id: string) {
   terminalTabs.value = terminalTabs.value.filter((tab) => tab.id !== id)
   if (activeTerminalId.value === id) activeTerminalId.value = terminalTabs.value[Math.max(0, index - 1)]?.id ?? ''
 }
-function newTerminal() { if (servers.value[0]) void openTerminal(servers.value[0]) }
 async function importConfig() {
   try {
     await ElMessageBox.confirm(
@@ -356,8 +355,7 @@ onBeforeUnmount(() => unlistenState?.())
             <el-tabs v-if="terminalTabs.length" v-model="activeTerminalId" type="card" closable class="terminal-tabs" @tab-remove="closeTerminal(String($event))">
               <el-tab-pane v-for="tab in terminalTabs" :key="tab.id" :name="tab.id" :label="tab.title"><TerminalPane :terminal-id="tab.id" :server-id="tab.serverId" :password="tab.password" @closed="closeTerminal(tab.id)" /></el-tab-pane>
             </el-tabs>
-            <div class="terminal-toolbar"><el-button size="small" :icon="Plus" :disabled="!servers.length" @click="newTerminal">新建终端</el-button></div>
-            <el-empty v-if="!terminalTabs.length" description="选择一台服务器打开内嵌 SSH 终端"><el-space wrap><el-button v-for="server in servers" :key="server.id" :icon="TerminalSquare" @click="openTerminal(server)">{{ server.name }}</el-button></el-space></el-empty>
+            <el-empty v-if="!terminalTabs.length" description="请从连接页选择服务器打开终端" />
           </div>
         </template>
 
