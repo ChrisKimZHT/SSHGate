@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { useI18n } from 'vue-i18n'
 import { api } from '../api'
 import type { TerminalEvent } from '../types'
 import { showError } from '../utils/errorDialog'
@@ -13,9 +14,10 @@ const props = defineProps<{
   password?: string
 }>()
 const emit = defineEmits<{ closed: [] }>()
+const { t } = useI18n()
 
 const host = ref<HTMLElement>()
-const status = ref('正在打开终端…')
+const status = ref(t('terminal.opening'))
 let terminal: Terminal | undefined
 let fitAddon: FitAddon | undefined
 let observer: ResizeObserver | undefined
@@ -67,12 +69,12 @@ onMounted(async () => {
   })
   unlistenClosed = await listen<TerminalEvent>('terminal-closed', ({ payload }) => {
     if (payload.terminalId !== props.terminalId) return
-    status.value = payload.message || (payload.exitStatus != null ? `远端 Shell 已退出 (${payload.exitStatus})` : '终端已关闭')
+    status.value = payload.message || (payload.exitStatus != null ? t('terminal.remoteExited', { status: payload.exitStatus }) : t('terminal.closed'))
     terminal?.writeln(`\r\n\x1b[38;5;244m${status.value}\x1b[0m`)
   })
 
   terminal.onData((data) => api.terminalInput(props.terminalId, data).catch((error) => {
-    status.value = '终端输入失败'
+    status.value = t('terminal.inputFailed')
     void showError(error)
   }))
 
@@ -84,10 +86,10 @@ onMounted(async () => {
 
   try {
     await api.openTerminal(props.serverId, props.terminalId, terminal.cols, terminal.rows, props.password)
-    status.value = '已连接'
+    status.value = t('terminal.connected')
     terminal.focus()
   } catch (error) {
-    status.value = '终端打开失败'
+    status.value = t('terminal.openFailed')
     await showError(error)
   }
 })
