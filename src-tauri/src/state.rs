@@ -562,17 +562,37 @@ impl AppState {
             .map(|_| ())
     }
 
+    async fn active_session(&self, server_id: &str) -> Option<Arc<Mutex<SshHandle>>> {
+        loop {
+            let existing = {
+                let sessions = self.0.sessions.lock().await;
+                sessions.get(server_id).cloned()
+            }?;
+            let is_closed = existing.lock().await.is_closed();
+            if !is_closed {
+                return Some(existing);
+            }
+
+            let mut sessions = self.0.sessions.lock().await;
+            let is_current = sessions
+                .get(server_id)
+                .map(|current| Arc::ptr_eq(current, &existing))
+                .unwrap_or(false);
+            if is_current {
+                sessions.remove(server_id);
+                return None;
+            }
+        }
+    }
+
     async fn connect_internal(
         &self,
         server_id: &str,
         password: Option<String>,
         reconnecting: bool,
     ) -> anyhow::Result<Arc<Mutex<SshHandle>>> {
-        if let Some(existing) = self.0.sessions.lock().await.get(server_id).cloned() {
-            if !existing.lock().await.is_closed() {
-                return Ok(existing);
-            }
-            self.0.sessions.lock().await.remove(server_id);
+        if let Some(existing) = self.active_session(server_id).await {
+            return Ok(existing);
         }
 
         let server = self
@@ -846,7 +866,11 @@ impl AppState {
     }
 
     async fn close_session(&self, server_id: &str) {
-        if let Some(handle) = self.0.sessions.lock().await.remove(server_id) {
+        let handle = {
+            let mut sessions = self.0.sessions.lock().await;
+            sessions.remove(server_id)
+        };
+        if let Some(handle) = handle {
             let _ = handle
                 .lock()
                 .await
@@ -957,10 +981,8 @@ impl AppState {
     }
 
     async fn ensure_session(&self, server_id: &str) -> anyhow::Result<Arc<Mutex<SshHandle>>> {
-        if let Some(handle) = self.0.sessions.lock().await.get(server_id).cloned() {
-            if !handle.lock().await.is_closed() {
-                return Ok(handle);
-            }
+        if let Some(handle) = self.active_session(server_id).await {
+            return Ok(handle);
         }
         let auth_type = self
             .0
@@ -997,9 +1019,9 @@ impl AppState {
         if self.0.terminals.lock().await.contains_key(terminal_id) {
             return Ok(());
         }
-        let handle = match self.0.sessions.lock().await.get(server_id).cloned() {
-            Some(handle) if !handle.lock().await.is_closed() => handle,
-            _ => self.connect_internal(server_id, password, false).await?,
+        let handle = match self.active_session(server_id).await {
+            Some(handle) => handle,
+            None => self.connect_internal(server_id, password, false).await?,
         };
         let channel_result: anyhow::Result<Channel<client::Msg>> = async {
             let channel = handle
