@@ -100,7 +100,6 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .config-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
 .config-actions .el-button + .el-button { margin-left: 0; }
 .port-input { width: 100%; }
-.form-footer { margin-top: 28px; text-align: right; }
 
 .el-dialog { --el-dialog-padding-primary: 24px; }
 .el-message-box { --el-messagebox-padding-primary: 18px; }

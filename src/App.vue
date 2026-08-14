@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -40,6 +40,9 @@ const passwordByServer = reactive<Record<string, string>>({})
 const terminalTabs = ref<TerminalTab[]>([])
 const activeTerminalId = ref('')
 let unlistenState: UnlistenFn | undefined
+let settingsSaveTimer: number | undefined
+let settingsRevision = 0
+let settingsSyncing = false
 
 const blankServer = (): ServerForm => ({
   id: crypto.randomUUID(), name: '', host: '', port: undefined, username: '', authType: 'key', privateKeyPath: '', rememberSecret: false, hostKeyFingerprint: null,
@@ -64,6 +67,35 @@ const serviceRules: FormRules = {
 const servers = computed(() => snapshot.value?.config.servers ?? [])
 const services = computed(() => snapshot.value?.config.services ?? [])
 const proxyHealthy = computed(() => !snapshot.value?.proxyError)
+
+function syncSettingsForm(settings: Settings) {
+  window.clearTimeout(settingsSaveTimer)
+  settingsRevision += 1
+  settingsSyncing = true
+  Object.assign(settingsForm, settings)
+  settingsSyncing = false
+}
+
+watch(settingsForm, () => {
+  if (settingsSyncing || loading.value) return
+  window.clearTimeout(settingsSaveTimer)
+  const revision = ++settingsRevision
+  settingsSaveTimer = window.setTimeout(async () => {
+    const settings = { ...settingsForm }
+    if (!settings.listenAddress.trim() || !settings.listenPort || !settings.reconnectDelaySeconds) {
+      if (revision === settingsRevision) ElMessage.warning('设置未保存，请填写有效的监听地址、端口和重连间隔')
+      return
+    }
+    try {
+      const result = await api.saveSettings(settings)
+      if (revision !== settingsRevision) return
+      snapshot.value = result
+      ElMessage.success('设置已自动保存')
+    } catch (error) {
+      if (revision === settingsRevision) await showError(error)
+    }
+  }, 600)
+}, { deep: true, flush: 'sync' })
 
 function normalizeDomainLabel(value: string, fallback = '') {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || fallback
@@ -103,7 +135,7 @@ function stateType(status: string): TagProps['type'] {
 async function refresh() {
   try {
     snapshot.value = await api.snapshot()
-    Object.assign(settingsForm, snapshot.value.config.settings)
+    syncSettingsForm(snapshot.value.config.settings)
   } catch (error) { await showError(error) }
   finally { loading.value = false }
 }
@@ -316,7 +348,7 @@ async function importAppConfig() {
     snapshot.value = await api.importAppConfig(path)
     terminalTabs.value = []
     activeTerminalId.value = ''
-    Object.assign(settingsForm, snapshot.value.config.settings)
+    syncSettingsForm(snapshot.value.config.settings)
     ElMessage.success('应用 Config 已导入')
   } catch (error) { await showError(error) }
 }
@@ -331,15 +363,16 @@ async function exportAppConfig() {
     ElMessage.success('应用 Config 已导出')
   } catch (error) { await showError(error) }
 }
-async function saveSettings() { await run(() => api.saveSettings({ ...settingsForm }), '设置已保存，代理已重启') }
-
 onMounted(async () => {
   document.documentElement.classList.remove('dark')
   localStorage.removeItem('sshgate-theme')
   unlistenState = await listen<RuntimeSnapshot>('state-changed', ({ payload }) => { snapshot.value = payload })
   await refresh()
 })
-onBeforeUnmount(() => unlistenState?.())
+onBeforeUnmount(() => {
+  window.clearTimeout(settingsSaveTimer)
+  unlistenState?.()
+})
 </script>
 
 <template>
@@ -414,7 +447,6 @@ onBeforeUnmount(() => unlistenState?.())
               <el-divider />
               <h3>配置管理</h3><el-text type="info">应用 Config 包含服务器、应用、设置和主机指纹，不包含密码或私钥口令。</el-text>
               <div class="config-actions"><el-button :icon="Import" @click="importConfig">导入 SSH Config</el-button><el-button :icon="FileInput" @click="importAppConfig">导入应用 Config</el-button><el-button :icon="FileOutput" @click="exportAppConfig">导出应用 Config</el-button></div>
-              <div class="form-footer"><el-button type="primary" @click="saveSettings">保存设置</el-button></div>
             </el-form>
           </el-card>
         </template>
