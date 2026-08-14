@@ -102,7 +102,7 @@ watch(settingsForm, () => {
 }, { deep: true, flush: 'sync' })
 
 function normalizeDomainLabel(value: string, fallback = '') {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || fallback
+  return value.trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || fallback
 }
 function normalizeDomainPrefix(value: string) {
   return value

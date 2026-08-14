@@ -4616,6 +4616,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "dirs",
+ "idna",
  "keyring",
  "russh",
  "serde",

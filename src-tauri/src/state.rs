@@ -359,11 +359,12 @@ impl AppState {
             normalize_domain(&service.domain)
         };
         validate_service(&service)?;
-        if config
-            .services
-            .iter()
-            .any(|item| item.domain.eq_ignore_ascii_case(&service.domain) && item.id != service.id)
-        {
+        let service_domain_key =
+            canonical_domain(&service.domain).ok_or_else(|| anyhow!("域名包含无效字符"))?;
+        if config.services.iter().any(|item| {
+            item.id != service.id
+                && canonical_domain(&item.domain).as_deref() == Some(service_domain_key.as_str())
+        }) {
             return Err(anyhow!("域名 {} 已被其他应用使用", service.domain));
         }
         match config
@@ -954,11 +955,15 @@ impl AppState {
     }
 
     pub async fn find_running_service(&self, host: &str) -> Option<WebService> {
+        let host = canonical_domain(host)?;
         let config = self.0.config.read().await;
         config
             .services
             .iter()
-            .find(|service| service.desired_running && service.domain.eq_ignore_ascii_case(host))
+            .find(|service| {
+                service.desired_running
+                    && canonical_domain(&service.domain).as_deref() == Some(host.as_str())
+            })
             .cloned()
     }
 
@@ -1349,8 +1354,8 @@ fn normalize_domain(domain: &str) -> String {
 fn normalize_domain_label(value: &str, fallback: &str) -> String {
     let mut result = String::new();
     let mut last_was_separator = false;
-    for ch in value.trim().to_ascii_lowercase().chars() {
-        if ch.is_ascii_alphanumeric() {
+    for ch in value.trim().chars().flat_map(char::to_lowercase) {
+        if ch.is_alphanumeric() {
             result.push(ch);
             last_was_separator = false;
         } else if !last_was_separator && !result.is_empty() {
@@ -1365,6 +1370,21 @@ fn normalize_domain_label(value: &str, fallback: &str) -> String {
         fallback.to_owned()
     } else {
         result
+    }
+}
+
+fn canonical_domain(domain: &str) -> Option<String> {
+    let ascii = idna::domain_to_ascii(domain.trim())
+        .ok()?
+        .to_ascii_lowercase();
+    if ascii.len() > 253
+        || ascii
+            .split('.')
+            .any(|label| label.is_empty() || label.len() > 63)
+    {
+        None
+    } else {
+        Some(ascii)
     }
 }
 
@@ -1393,10 +1413,11 @@ fn validate_service(service: &WebService) -> anyhow::Result<()> {
         label.is_empty()
             || label.starts_with('-')
             || label.ends_with('-')
-            || !label
-                .chars()
-                .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+            || !label.chars().all(|ch| ch.is_alphanumeric() || ch == '-')
     }) {
+        return Err(anyhow!("域名包含无效字符"));
+    }
+    if canonical_domain(&service.domain).is_none() {
         return Err(anyhow!("域名包含无效字符"));
     }
     Ok(())
@@ -1435,7 +1456,9 @@ fn validate_app_config(config: &AppConfig) -> anyhow::Result<()> {
         if !server_ids.contains(&service.server_id) {
             return Err(anyhow!("应用配置中的应用引用了不存在的 SSH 服务器"));
         }
-        if !domains.insert(service.domain.trim().to_ascii_lowercase()) {
+        let domain = canonical_domain(&service.domain)
+            .ok_or_else(|| anyhow!("应用配置中存在无效的访问域名"))?;
+        if !domains.insert(domain) {
             return Err(anyhow!("应用配置中存在重复的访问域名"));
         }
         if service.remote_port == 0 {
@@ -1531,7 +1554,7 @@ fn parse_ssh_config(raw: &str) -> Vec<SshServer> {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_service_domain, normalize_domain, parse_ssh_config};
+    use super::{canonical_domain, default_service_domain, normalize_domain, parse_ssh_config};
 
     #[test]
     fn imports_concrete_ssh_hosts_only() {
@@ -1562,7 +1585,11 @@ mod tests {
         );
         assert_eq!(
             default_service_domain("中文应用", "服务器"),
-            "service.server.localhost"
+            "中文应用.服务器.localhost"
+        );
+        assert_eq!(
+            canonical_domain("中文应用.服务器.localhost").as_deref(),
+            Some("xn--fiqt31bqhfkpr.xn--zfru1ggxt.localhost")
         );
     }
 }
