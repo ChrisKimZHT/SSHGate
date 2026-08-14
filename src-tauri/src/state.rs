@@ -151,6 +151,23 @@ impl AppState {
     pub async fn restore_services(&self) {
         let config = self.0.config.read().await.clone();
         if !config.settings.auto_start_services {
+            let changed = {
+                let mut config = self.0.config.write().await;
+                let mut changed = false;
+                for service in &mut config.services {
+                    if service.desired_running {
+                        service.desired_running = false;
+                        changed = true;
+                    }
+                }
+                changed
+            };
+            if changed {
+                if let Err(error) = self.persist().await {
+                    eprintln!("failed to persist disabled startup services: {error:#}");
+                }
+                self.emit_state().await;
+            }
             return;
         }
         let server_ids: HashSet<String> = config
