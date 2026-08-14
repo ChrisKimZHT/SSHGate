@@ -62,6 +62,9 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .embedded-table .el-table__row:last-child td.el-table__cell { border-bottom: 0; }
 .service-name { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
 .service-name b { overflow: hidden; color: var(--el-text-color-primary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.service-title { display: flex; min-width: 0; min-height: 18px; align-items: center; gap: 6px; line-height: 18px; }
+.service-title svg { display: block; flex: 0 0 14px; align-self: center; color: var(--el-text-color-secondary); }
+.service-title-text { display: block; overflow: hidden; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
 .service-name .el-link { align-self: flex-start; max-width: 100%; font: 11px "Cascadia Code", Consolas, monospace; }
 .service-name .el-link__inner { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

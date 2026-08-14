@@ -3,6 +3,7 @@ mod model;
 mod proxy;
 mod ssh;
 mod state;
+mod tcp_proxy;
 
 use model::{RuntimeSnapshot, Settings, SshServer, WebService};
 use state::AppState;

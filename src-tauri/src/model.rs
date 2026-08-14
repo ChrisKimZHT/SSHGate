@@ -31,11 +31,30 @@ pub struct WebService {
     pub id: String,
     pub server_id: String,
     pub name: String,
+    #[serde(default)]
+    pub service_type: ServiceType,
     pub remote_host: String,
     pub remote_port: u16,
+    #[serde(default = "default_local_address")]
+    pub local_address: String,
+    #[serde(default)]
+    pub local_port: u16,
+    #[serde(default)]
     pub domain: String,
     #[serde(default)]
     pub desired_running: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ServiceType {
+    #[default]
+    Http,
+    Tcp,
+}
+
+fn default_local_address() -> String {
+    "127.0.0.1".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,4 +150,21 @@ pub struct TerminalEvent {
     pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exit_status: Option<u32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ServiceType, WebService};
+
+    #[test]
+    fn legacy_web_service_defaults_to_http() {
+        let service: WebService = serde_json::from_str(
+            r#"{"id":"1","serverId":"s1","name":"Web","remoteHost":"127.0.0.1","remotePort":3000,"domain":"web.localhost"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(service.service_type, ServiceType::Http);
+        assert_eq!(service.local_address, "127.0.0.1");
+        assert_eq!(service.local_port, 0);
+    }
 }

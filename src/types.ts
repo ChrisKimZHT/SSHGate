@@ -17,8 +17,11 @@ export interface WebService {
   id: string
   serverId: string
   name: string
+  serviceType: 'http' | 'tcp'
   remoteHost: string
   remotePort: number
+  localAddress: string
+  localPort: number
   domain: string
   desiredRunning: boolean
 }

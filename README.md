@@ -1,6 +1,6 @@
 # SSHGate
 
-SSHGate 是一个带**图形界面**的 SSH 端口转发工具。它通过 **SSH 端口映射**访问远端服务，并由本地**反向代理**将服务映射为易记的 `*.localhost` 地址。
+SSHGate 是一个带**图形界面**的 SSH 端口转发工具。它既可由本地 HTTP 反向代理将远端 Web 服务映射为易记的 `*.localhost` 地址，也支持为数据库等服务创建独立的纯 TCP 本地端口转发。
 
 ![UI Preview](./images/ui-preview.png)
 
@@ -8,6 +8,7 @@ SSHGate 是一个带**图形界面**的 SSH 端口转发工具。它通过 **SSH
 
 - 管理多个 SSH 服务器和远端应用
 - 使用 `应用名.服务器名.localhost` 访问远端 Web 服务
+- 支持用户指定本地监听地址和端口的纯 TCP 转发
 - 支持 HTTP 流式响应和 WebSocket
 - 提供多标签交互式 SSH 终端
 - 支持应用启停、连接恢复和配置导入导出
@@ -15,8 +16,8 @@ SSHGate 是一个带**图形界面**的 SSH 端口转发工具。它通过 **SSH
 ## 使用
 
 1. 在连接页添加 SSH 服务器，选择密钥或密码认证。
-2. 为服务器添加应用，填写远端主机和端口。
-3. 启动应用，通过生成的 `*.localhost` 地址访问远端服务。
+2. 为服务器添加应用，选择 HTTP 或 TCP 转发并填写远端主机和端口。
+3. 启动应用；HTTP 服务通过生成的 `*.localhost` 地址访问，TCP 服务通过配置的本地 `host:port` 访问。
 4. 如需命令行操作，可从服务器卡片打开终端。
 
 本地反向代理默认监听 `127.0.0.1:80`。端口被占用时，可在设置页修改监听端口；使用非 80 端口时，访问地址会自动附加端口号。
@@ -31,7 +32,7 @@ SSHGate 是一个带**图形界面**的 SSH 端口转发工具。它通过 **SSH
 
 ## 实现
 
-桌面端基于 Tauri 2、Vue 3 和 Element Plus。Rust 后端使用 `russh` 与 Tokio 管理 SSH 会话，通过 SSH `direct-tcpip` channel 转发远端流量，并以内置 HTTP 反向代理按 `.localhost` 域名路由请求。同一服务器的应用和终端复用 SSH 会话，终端界面由 xterm.js 提供。
+桌面端基于 Tauri 2、Vue 3 和 Element Plus。Rust 后端使用 `russh` 与 Tokio 管理 SSH 会话，通过 SSH `direct-tcpip` channel 转发远端流量；HTTP 模式由内置反向代理按 `.localhost` 域名路由，TCP 模式则使用每项服务独立的本地监听端口进行字节流透传。同一服务器的应用和终端复用 SSH 会话，终端界面由 xterm.js 提供。
 
 ## 开发
 

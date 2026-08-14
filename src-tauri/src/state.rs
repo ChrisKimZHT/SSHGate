@@ -1,10 +1,11 @@
 use crate::credentials;
 use crate::model::{
-    AppConfig, AuthType, ConnectionStatus, RuntimeSnapshot, RuntimeState, ServiceStatus, Settings,
-    SshServer, TerminalEvent, WebService,
+    AppConfig, AuthType, ConnectionStatus, RuntimeSnapshot, RuntimeState, ServiceStatus,
+    ServiceType, Settings, SshServer, TerminalEvent, WebService,
 };
 use crate::proxy;
 use crate::ssh::{ClientHandler, SshHandle};
+use crate::tcp_proxy;
 use anyhow::{anyhow, Context};
 use base64::Engine;
 use russh::client;
@@ -32,6 +33,7 @@ struct Inner {
     service_states: RwLock<HashMap<String, RuntimeState<ServiceStatus>>>,
     proxy_error: RwLock<Option<String>>,
     proxy_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+    tcp_tasks: Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>,
     shutting_down: AtomicBool,
 }
 
@@ -87,6 +89,7 @@ impl AppState {
             service_states: RwLock::new(service_states),
             proxy_error: RwLock::new(None),
             proxy_task: Mutex::new(None),
+            tcp_tasks: Mutex::new(HashMap::new()),
             shutting_down: AtomicBool::new(false),
         })))
     }
@@ -184,7 +187,9 @@ impl AppState {
                 let state = self.clone();
                 let id = server_id.clone();
                 tauri::async_runtime::spawn(async move {
-                    let _ = state.connect_internal(&id, None, false).await;
+                    if state.connect_internal(&id, None, false).await.is_ok() {
+                        let _ = state.start_desired_tcp_services(&id).await;
+                    }
                 });
             } else {
                 self.set_server_services_state(
@@ -318,6 +323,7 @@ impl AppState {
         self.0.server_states.write().await.remove(server_id);
         let mut service_states = self.0.service_states.write().await;
         for id in removed_service_ids {
+            self.stop_tcp_listener(&id).await;
             service_states.remove(&id);
         }
         drop(service_states);
@@ -393,6 +399,7 @@ impl AppState {
     pub async fn save_service(&self, mut service: WebService) -> anyhow::Result<()> {
         service.name = service.name.trim().to_owned();
         service.remote_host = service.remote_host.trim().to_owned();
+        service.local_address = service.local_address.trim().to_owned();
         if service.id.trim().is_empty() {
             service.id = Uuid::new_v4().to_string();
         }
@@ -403,20 +410,44 @@ impl AppState {
             .find(|server| server.id == service.server_id)
             .map(|server| server.name.clone())
             .ok_or_else(|| anyhow!("所选 SSH 服务器不存在"))?;
-        service.domain = if service.domain.trim().is_empty() {
-            default_service_domain(&service.name, &server_name)
-        } else {
-            normalize_domain(&service.domain)
+        service.domain = match service.service_type {
+            ServiceType::Http if service.domain.trim().is_empty() => {
+                default_service_domain(&service.name, &server_name)
+            }
+            ServiceType::Http => normalize_domain(&service.domain),
+            ServiceType::Tcp => String::new(),
         };
         validate_service(&service)?;
-        let service_domain_key =
-            canonical_domain(&service.domain).ok_or_else(|| anyhow!("域名包含无效字符"))?;
-        if config.services.iter().any(|item| {
+        if service.service_type == ServiceType::Http {
+            let service_domain_key =
+                canonical_domain(&service.domain).ok_or_else(|| anyhow!("域名包含无效字符"))?;
+            if config.services.iter().any(|item| {
+                item.id != service.id
+                    && item.service_type == ServiceType::Http
+                    && canonical_domain(&item.domain).as_deref()
+                        == Some(service_domain_key.as_str())
+            }) {
+                return Err(anyhow!("域名 {} 已被其他应用使用", service.domain));
+            }
+        } else if config.services.iter().any(|item| {
             item.id != service.id
-                && canonical_domain(&item.domain).as_deref() == Some(service_domain_key.as_str())
+                && item.service_type == ServiceType::Tcp
+                && item
+                    .local_address
+                    .eq_ignore_ascii_case(&service.local_address)
+                && item.local_port == service.local_port
         }) {
-            return Err(anyhow!("域名 {} 已被其他应用使用", service.domain));
+            return Err(anyhow!(
+                "本地监听 {}:{} 已被其他 TCP 转发使用",
+                service.local_address,
+                service.local_port
+            ));
         }
+        let previous = config
+            .services
+            .iter()
+            .find(|item| item.id == service.id)
+            .cloned();
         match config
             .services
             .iter_mut()
@@ -433,14 +464,33 @@ impl AppState {
             .service_states
             .write()
             .await
-            .entry(service.id)
+            .entry(service.id.clone())
             .or_insert_with(|| RuntimeState::new(ServiceStatus::Stopped));
         self.persist().await?;
+        if service.desired_running {
+            self.stop_tcp_listener(&service.id).await;
+            if service.service_type == ServiceType::Tcp {
+                if let Err(error) = self.start_tcp_listener(&service).await {
+                    self.0.service_states.write().await.insert(
+                        service.id.clone(),
+                        RuntimeState::error(ServiceStatus::Error, error.to_string()),
+                    );
+                    self.emit_state().await;
+                    return Err(error);
+                }
+            }
+            if let Some(previous) = previous {
+                if previous.server_id != service.server_id {
+                    self.close_session_if_unused(&previous.server_id).await;
+                }
+            }
+        }
         self.emit_state().await;
         Ok(())
     }
 
     pub async fn remove_service(&self, service_id: &str) -> anyhow::Result<()> {
+        self.stop_tcp_listener(service_id).await;
         let server_id = {
             let mut config = self.0.config.write().await;
             let server_id = config
@@ -504,6 +554,14 @@ impl AppState {
             self.emit_state().await;
             return Err(error);
         }
+        if let Err(error) = self.start_tcp_listener(&service).await {
+            self.0.service_states.write().await.insert(
+                service.id.clone(),
+                RuntimeState::error(ServiceStatus::Error, error.to_string()),
+            );
+            self.emit_state().await;
+            return Err(error);
+        }
         self.0
             .service_states
             .write()
@@ -560,10 +618,11 @@ impl AppState {
         }
         {
             let mut states = self.0.service_states.write().await;
-            for id in service_ids {
-                states.insert(id, RuntimeState::new(ServiceStatus::Running));
+            for id in &service_ids {
+                states.insert(id.clone(), RuntimeState::new(ServiceStatus::Running));
             }
         }
+        self.start_desired_tcp_services(server_id).await?;
         self.emit_state().await;
         Ok(())
     }
@@ -578,6 +637,7 @@ impl AppState {
         service.desired_running = false;
         let server_id = service.server_id.clone();
         drop(config);
+        self.stop_tcp_listener(service_id).await;
         self.0.service_states.write().await.insert(
             service_id.to_owned(),
             RuntimeState::new(ServiceStatus::Stopped),
@@ -608,6 +668,9 @@ impl AppState {
         if service_ids.is_empty() {
             return Err(anyhow!("该服务器还没有应用"));
         }
+        for id in &service_ids {
+            self.stop_tcp_listener(id).await;
+        }
         {
             let mut states = self.0.service_states.write().await;
             for id in service_ids {
@@ -625,9 +688,9 @@ impl AppState {
         server_id: &str,
         password: Option<String>,
     ) -> anyhow::Result<()> {
-        self.connect_internal(server_id, password, false)
-            .await
-            .map(|_| ())
+        self.connect_internal(server_id, password, false).await?;
+        self.start_desired_tcp_services(server_id).await?;
+        Ok(())
     }
 
     async fn active_session(&self, server_id: &str) -> Option<Arc<Mutex<SshHandle>>> {
@@ -911,23 +974,33 @@ impl AppState {
     }
 
     pub async fn disconnect_server(&self, server_id: &str) -> anyhow::Result<()> {
-        {
+        let service_ids = {
             let mut config = self.0.config.write().await;
+            let mut ids = Vec::new();
             for service in config
                 .services
                 .iter_mut()
                 .filter(|service| service.server_id == server_id)
             {
                 service.desired_running = false;
+                ids.push(service.id.clone());
             }
+            ids
+        };
+        for id in &service_ids {
+            self.stop_tcp_listener(id).await;
         }
         self.close_session(server_id).await;
         self.0.server_states.write().await.insert(
             server_id.to_owned(),
             RuntimeState::new(ConnectionStatus::Stopped),
         );
-        self.set_server_services_state(server_id, ServiceStatus::Stopped, None)
-            .await;
+        {
+            let mut states = self.0.service_states.write().await;
+            for id in service_ids {
+                states.insert(id, RuntimeState::new(ServiceStatus::Stopped));
+            }
+        }
         self.persist().await?;
         self.emit_state().await;
         Ok(())
@@ -1004,6 +1077,75 @@ impl AppState {
         }
     }
 
+    async fn start_tcp_listener(&self, service: &WebService) -> anyhow::Result<()> {
+        if service.service_type != ServiceType::Tcp {
+            return Ok(());
+        }
+        {
+            let tasks = self.0.tcp_tasks.lock().await;
+            if tasks.contains_key(&service.id) {
+                return Ok(());
+            }
+        }
+        let listener = tcp_proxy::bind(service).await.with_context(|| {
+            format!(
+                "无法监听 TCP 地址 {}:{}",
+                service.local_address, service.local_port
+            )
+        })?;
+        let state = self.clone();
+        let task_service = service.clone();
+        let task = tauri::async_runtime::spawn(async move {
+            tcp_proxy::run(state, task_service, listener).await;
+        });
+        self.0
+            .tcp_tasks
+            .lock()
+            .await
+            .insert(service.id.clone(), task);
+        Ok(())
+    }
+
+    async fn stop_tcp_listener(&self, service_id: &str) {
+        if let Some(task) = self.0.tcp_tasks.lock().await.remove(service_id) {
+            task.abort();
+        }
+    }
+
+    async fn start_desired_tcp_services(&self, server_id: &str) -> anyhow::Result<()> {
+        let services: Vec<WebService> = self
+            .0
+            .config
+            .read()
+            .await
+            .services
+            .iter()
+            .filter(|service| {
+                service.server_id == server_id
+                    && service.desired_running
+                    && service.service_type == ServiceType::Tcp
+            })
+            .cloned()
+            .collect();
+        let mut first_error = None;
+        for service in services {
+            if let Err(error) = self.start_tcp_listener(&service).await {
+                let message = error.to_string();
+                self.0.service_states.write().await.insert(
+                    service.id.clone(),
+                    RuntimeState::error(ServiceStatus::Error, message.clone()),
+                );
+                first_error.get_or_insert(message);
+            }
+        }
+        self.emit_state().await;
+        if let Some(error) = first_error {
+            Err(anyhow!(error))
+        } else {
+            Ok(())
+        }
+    }
+
     pub async fn find_running_service(&self, host: &str) -> Option<WebService> {
         let host = canonical_domain(host)?;
         let config = self.0.config.read().await;
@@ -1012,6 +1154,7 @@ impl AppState {
             .iter()
             .find(|service| {
                 service.desired_running
+                    && service.service_type == ServiceType::Http
                     && canonical_domain(&service.domain).as_deref() == Some(host.as_str())
             })
             .cloned()
@@ -1296,6 +1439,17 @@ impl AppState {
         for terminal_id in terminal_ids {
             self.close_terminal(&terminal_id).await;
         }
+        let tcp_tasks: Vec<tauri::async_runtime::JoinHandle<()>> = self
+            .0
+            .tcp_tasks
+            .lock()
+            .await
+            .drain()
+            .map(|(_, task)| task)
+            .collect();
+        for task in tcp_tasks {
+            task.abort();
+        }
         let sessions: Vec<Arc<Mutex<SshHandle>>> = self
             .0
             .sessions
@@ -1345,6 +1499,17 @@ impl AppState {
     pub async fn shutdown(&self) {
         self.0.shutting_down.store(true, Ordering::SeqCst);
         if let Some(task) = self.0.proxy_task.lock().await.take() {
+            task.abort();
+        }
+        let tcp_tasks: Vec<tauri::async_runtime::JoinHandle<()>> = self
+            .0
+            .tcp_tasks
+            .lock()
+            .await
+            .drain()
+            .map(|(_, task)| task)
+            .collect();
+        for task in tcp_tasks {
             task.abort();
         }
         let terminal_ids: Vec<String> = self.0.terminals.lock().await.keys().cloned().collect();
@@ -1447,28 +1612,36 @@ fn default_service_domain(service_name: &str, server_name: &str) -> String {
 }
 
 fn validate_service(service: &WebService) -> anyhow::Result<()> {
-    if service.name.is_empty() || service.remote_host.is_empty() || service.domain.is_empty() {
-        return Err(anyhow!("名称、远端主机和域名不能为空"));
+    if service.name.is_empty() || service.remote_host.is_empty() || service.remote_port == 0 {
+        return Err(anyhow!("名称、远端主机和远端端口不能为空"));
     }
-    if !service.domain.ends_with(".localhost")
-        || service.domain.contains(':')
-        || service.domain.contains('/')
-        || service.domain.contains(' ')
-    {
-        return Err(anyhow!(
-            "域名必须是有效的 .localhost 域名，例如 jupyter.gpu.localhost"
-        ));
-    }
-    if service.domain.split('.').any(|label| {
-        label.is_empty()
-            || label.starts_with('-')
-            || label.ends_with('-')
-            || !label.chars().all(|ch| ch.is_alphanumeric() || ch == '-')
-    }) {
-        return Err(anyhow!("域名包含无效字符"));
-    }
-    if canonical_domain(&service.domain).is_none() {
-        return Err(anyhow!("域名包含无效字符"));
+    match service.service_type {
+        ServiceType::Http => {
+            if service.domain.is_empty()
+                || !service.domain.ends_with(".localhost")
+                || service.domain.contains(':')
+                || service.domain.contains('/')
+                || service.domain.contains(' ')
+            {
+                return Err(anyhow!(
+                    "域名必须是有效的 .localhost 域名，例如 jupyter.gpu.localhost"
+                ));
+            }
+            if service.domain.split('.').any(|label| {
+                label.is_empty()
+                    || label.starts_with('-')
+                    || label.ends_with('-')
+                    || !label.chars().all(|ch| ch.is_alphanumeric() || ch == '-')
+            }) || canonical_domain(&service.domain).is_none()
+            {
+                return Err(anyhow!("域名包含无效字符"));
+            }
+        }
+        ServiceType::Tcp => {
+            if service.local_address.is_empty() || service.local_port == 0 {
+                return Err(anyhow!("TCP 转发的本地监听地址和端口不能为空"));
+            }
+        }
     }
     Ok(())
 }
@@ -1498,6 +1671,7 @@ fn validate_app_config(config: &AppConfig) -> anyhow::Result<()> {
 
     let mut service_ids = HashSet::new();
     let mut domains = HashSet::new();
+    let mut tcp_endpoints = HashSet::new();
     for service in &config.services {
         validate_service(service)?;
         if service.id.trim().is_empty() || !service_ids.insert(service.id.clone()) {
@@ -1506,13 +1680,23 @@ fn validate_app_config(config: &AppConfig) -> anyhow::Result<()> {
         if !server_ids.contains(&service.server_id) {
             return Err(anyhow!("应用配置中的应用引用了不存在的 SSH 服务器"));
         }
-        let domain = canonical_domain(&service.domain)
-            .ok_or_else(|| anyhow!("应用配置中存在无效的访问域名"))?;
-        if !domains.insert(domain) {
-            return Err(anyhow!("应用配置中存在重复的访问域名"));
-        }
-        if service.remote_port == 0 {
-            return Err(anyhow!("应用配置中的远端端口无效"));
+        match service.service_type {
+            ServiceType::Http => {
+                let domain = canonical_domain(&service.domain)
+                    .ok_or_else(|| anyhow!("应用配置中存在无效的访问域名"))?;
+                if !domains.insert(domain) {
+                    return Err(anyhow!("应用配置中存在重复的访问域名"));
+                }
+            }
+            ServiceType::Tcp => {
+                let endpoint = (
+                    service.local_address.trim().to_ascii_lowercase(),
+                    service.local_port,
+                );
+                if !tcp_endpoints.insert(endpoint) {
+                    return Err(anyhow!("应用配置中存在重复的 TCP 本地监听地址"));
+                }
+            }
         }
     }
     Ok(())

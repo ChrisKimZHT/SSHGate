@@ -7,7 +7,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type TagProps } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, Check, CirclePlus, ExternalLink, FileInput, FileOutput, Fingerprint, Import, Monitor, Pencil, Plus, RefreshCw,
+  ArrowDown, ArrowUp, ArrowUpDown, Check, CirclePlus, Copy, ExternalLink, FileInput, FileOutput, Fingerprint, Globe2, Import, Monitor, Network, Pencil, Plus, RefreshCw,
   Server, Settings as Setting, TerminalSquare, Trash2,
 } from 'lucide-vue-next'
 import { api } from './api'
@@ -18,7 +18,7 @@ import { showError } from './utils/errorDialog'
 type Page = 'servers' | 'terminal' | 'fingerprints' | 'settings'
 interface TerminalTab { id: string; serverId: string; title: string; password?: string }
 type ServerForm = Omit<SshServer, 'port'> & { port?: number }
-type ServiceForm = Omit<WebService, 'remotePort'> & { remotePort?: number }
+type ServiceForm = Omit<WebService, 'remotePort' | 'localPort'> & { remotePort?: number; localPort?: number }
 
 const { t, te } = useI18n()
 
@@ -26,6 +26,7 @@ const DEFAULT_SERVER_PORT = 22
 const DEFAULT_PRIVATE_KEY_PATH = '~/.ssh/id_ed25519'
 const DEFAULT_REMOTE_HOST = '127.0.0.1'
 const DEFAULT_REMOTE_PORT = 3000
+const DEFAULT_LOCAL_ADDRESS = '127.0.0.1'
 
 const page = ref<Page>('servers')
 const snapshot = ref<RuntimeSnapshot>()
@@ -57,7 +58,8 @@ const blankServer = (): ServerForm => ({
   id: crypto.randomUUID(), name: '', host: '', port: undefined, username: '', authType: 'key', privateKeyPath: '', rememberSecret: false, hostKeyFingerprint: null,
 })
 const blankService = (serverId = ''): ServiceForm => ({
-  id: crypto.randomUUID(), serverId, name: '', remoteHost: '', remotePort: undefined, domain: '', desiredRunning: false,
+  id: crypto.randomUUID(), serverId, name: '', serviceType: 'http', remoteHost: '', remotePort: undefined,
+  localAddress: DEFAULT_LOCAL_ADDRESS, localPort: undefined, domain: '', desiredRunning: false,
 })
 const serverForm = reactive<ServerForm>(blankServer())
 const serviceForm = reactive<ServiceForm>(blankService())
@@ -71,6 +73,12 @@ const serverRules = computed<FormRules>(() => ({
 const serviceRules = computed<FormRules>(() => ({
   name: [{ required: true, message: t('validation.serviceName'), trigger: 'blur' }],
   serverId: [{ required: true, message: t('validation.server'), trigger: 'change' }],
+  localAddress: serviceForm.serviceType === 'tcp'
+    ? [{ required: true, message: t('validation.localAddress'), trigger: 'blur' }]
+    : [],
+  localPort: serviceForm.serviceType === 'tcp'
+    ? [{ required: true, message: t('validation.localPort'), trigger: 'change' }]
+    : [],
 }))
 
 const servers = computed(() => snapshot.value?.config.servers ?? [])
@@ -225,8 +233,11 @@ function defaultDomainPrefix() {
 function effectiveServiceDomain() { return `${normalizeDomainPrefix(serviceDomainPrefix.value) || defaultDomainPrefix()}.localhost` }
 function effectiveRemoteHost() { return serviceForm.remoteHost.trim() || DEFAULT_REMOTE_HOST }
 function effectiveRemotePort() { return serviceForm.remotePort ?? DEFAULT_REMOTE_PORT }
+function effectiveLocalAddress() { return serviceForm.localAddress.trim() || DEFAULT_LOCAL_ADDRESS }
+function formatEndpoint(host: string, port: number) { return `${host.includes(':') && !host.startsWith('[') ? `[${host}]` : host}:${port}` }
+function effectiveLocalEndpoint() { return formatEndpoint(effectiveLocalAddress(), serviceForm.localPort ?? 0) }
 function showAddService(serverId = servers.value[0]?.id ?? '') { Object.assign(serviceForm, blankService(serverId)); serviceDomainPrefix.value = ''; serviceEditing.value = false; serviceModal.value = true; nextTick(() => serviceFormRef.value?.clearValidate()) }
-function showEditService(service: WebService) { Object.assign(serviceForm, service, { remoteHost: service.remoteHost === DEFAULT_REMOTE_HOST ? '' : service.remoteHost, remotePort: service.remotePort === DEFAULT_REMOTE_PORT ? undefined : service.remotePort }); serviceDomainPrefix.value = service.domain.replace(/\.localhost\.?$/i, ''); serviceEditing.value = true; serviceModal.value = true; nextTick(() => serviceFormRef.value?.clearValidate()) }
+function showEditService(service: WebService) { Object.assign(serviceForm, service, { remoteHost: service.remoteHost === DEFAULT_REMOTE_HOST ? '' : service.remoteHost, remotePort: service.remotePort === DEFAULT_REMOTE_PORT ? undefined : service.remotePort }); serviceDomainPrefix.value = service.serviceType === 'http' ? service.domain.replace(/\.localhost\.?$/i, '') : ''; serviceEditing.value = true; serviceModal.value = true; nextTick(() => serviceFormRef.value?.clearValidate()) }
 
 async function run(action: () => Promise<RuntimeSnapshot | void>, success?: string) {
   try {
@@ -270,7 +281,9 @@ async function submitService() {
     ...serviceForm,
     remoteHost: effectiveRemoteHost(),
     remotePort: effectiveRemotePort(),
-    domain: effectiveServiceDomain(),
+    localAddress: effectiveLocalAddress(),
+    localPort: serviceForm.serviceType === 'tcp' ? (serviceForm.localPort ?? 0) : 0,
+    domain: serviceForm.serviceType === 'http' ? effectiveServiceDomain() : '',
   }
   if (await run(() => api.saveService(resolvedService), t('messages.serviceSaved'))) serviceModal.value = false
 }
@@ -310,8 +323,14 @@ function serviceUrl(service: WebService) {
   const port = snapshot.value?.config.settings.listenPort ?? 80
   return `http://${service.domain}${port === 80 ? '' : `:${port}`}`
 }
+function serviceAddress(service: WebService) {
+  return service.serviceType === 'tcp' ? formatEndpoint(service.localAddress, service.localPort) : serviceUrl(service)
+}
+function serviceDisplayAddress(service: WebService) {
+  return service.serviceType === 'tcp' ? formatEndpoint(service.localAddress, service.localPort) : service.domain
+}
 async function openService(service: WebService) { await openUrl(serviceUrl(service)) }
-async function copyDomain(service: WebService) { await navigator.clipboard.writeText(serviceUrl(service)); ElMessage.success(t('messages.addressCopied')) }
+async function copyDomain(service: WebService) { await navigator.clipboard.writeText(serviceAddress(service)); ElMessage.success(t('messages.addressCopied')) }
 async function askConnectionSecret(server: SshServer, required: boolean) {
   try {
     const { value } = await ElMessageBox.prompt(
@@ -465,9 +484,9 @@ onBeforeUnmount(() => {
                 <el-input v-if="server.authType === 'password' && serverState(server.id).status !== 'connected' && !server.rememberSecret" v-model="passwordByServer[server.id]" class="password-input" type="password" show-password />
                 <el-empty v-if="!displayedServicesFor(server.id).length" :image-size="46" :description="t('connections.noServices')" />
                 <el-table v-else :data="displayedServicesFor(server.id)" size="small" :show-header="false" class="embedded-table">
-                  <el-table-column min-width="170"><template #default="{ row }"><div class="service-name"><b>{{ row.name }}</b><el-link type="primary" :underline="false" @click="copyDomain(row)">{{ row.domain }}</el-link></div></template></el-table-column>
+                  <el-table-column min-width="170"><template #default="{ row }"><div class="service-name"><b class="service-title"><Globe2 v-if="row.serviceType === 'http'" :size="14" /><Network v-else :size="14" /><span class="service-title-text">{{ row.name }}</span></b><el-link type="primary" :underline="false" @click="copyDomain(row)">{{ serviceDisplayAddress(row) }}</el-link></div></template></el-table-column>
                   <el-table-column width="125"><template #default="{ row }"><el-text type="info"><code>{{ row.remoteHost }}:{{ row.remotePort }}</code></el-text></template></el-table-column>
-                  <el-table-column width="132" align="right"><template #default="{ row, $index }"><el-space :size="4"><template v-if="sortMode"><el-button circle text :icon="ArrowUp" :title="t('actions.moveUp')" :aria-label="t('actions.moveUp')" :disabled="$index === 0" @click="moveItem(sortedServiceIds[server.id], $index, -1)" /><el-button circle text :icon="ArrowDown" :title="t('actions.moveDown')" :aria-label="t('actions.moveDown')" :disabled="$index === displayedServicesFor(server.id).length - 1" @click="moveItem(sortedServiceIds[server.id], $index, 1)" /></template><template v-else><el-button circle text :icon="ExternalLink" :title="t('actions.openService')" :disabled="serviceState(row.id).status !== 'running'" @click="openService(row)" /><el-button circle text :icon="Pencil" :title="t('actions.editService')" @click="showEditService(row)" /><el-switch :model-value="row.desiredRunning" :loading="['starting', 'reconnecting'].includes(serviceState(row.id).status)" @change="toggleService(row, Boolean($event))" /></template></el-space></template></el-table-column>
+                  <el-table-column width="132" align="right"><template #default="{ row, $index }"><el-space :size="4"><template v-if="sortMode"><el-button circle text :icon="ArrowUp" :title="t('actions.moveUp')" :aria-label="t('actions.moveUp')" :disabled="$index === 0" @click="moveItem(sortedServiceIds[server.id], $index, -1)" /><el-button circle text :icon="ArrowDown" :title="t('actions.moveDown')" :aria-label="t('actions.moveDown')" :disabled="$index === displayedServicesFor(server.id).length - 1" @click="moveItem(sortedServiceIds[server.id], $index, 1)" /></template><template v-else><el-button circle text :icon="row.serviceType === 'http' ? ExternalLink : Copy" :title="t(row.serviceType === 'http' ? 'actions.openService' : 'actions.copyAddress')" :disabled="serviceState(row.id).status !== 'running'" @click="row.serviceType === 'http' ? openService(row) : copyDomain(row)" /><el-button circle text :icon="Pencil" :title="t('actions.editService')" @click="showEditService(row)" /><el-switch :model-value="row.desiredRunning" :loading="['starting', 'reconnecting'].includes(serviceState(row.id).status)" @change="toggleService(row, Boolean($event))" /></template></el-space></template></el-table-column>
                 </el-table>
               </el-card>
             </div>
@@ -524,10 +543,12 @@ onBeforeUnmount(() => {
 
     <el-dialog v-model="serviceModal" :title="t(serviceEditing ? 'serviceDialog.editTitle' : 'serviceDialog.addTitle')" width="560px" align-center destroy-on-close>
       <el-form ref="serviceFormRef" :model="serviceForm" :rules="serviceRules" label-position="top">
+        <el-form-item :label="t('serviceDialog.type')"><el-radio-group v-model="serviceForm.serviceType"><el-radio-button value="http">{{ t('serviceDialog.http') }}</el-radio-button><el-radio-button value="tcp">{{ t('serviceDialog.tcp') }}</el-radio-button></el-radio-group></el-form-item>
         <el-row :gutter="16"><el-col :span="18"><el-form-item :label="t('serviceDialog.name')" prop="name"><el-input v-model="serviceForm.name" /></el-form-item></el-col><el-col :span="6"><el-form-item :label="t('serviceDialog.server')" prop="serverId"><el-select v-model="serviceForm.serverId"><el-option v-for="server in servers" :key="server.id" :label="server.name" :value="server.id" /></el-select></el-form-item></el-col></el-row>
         <el-row :gutter="16"><el-col :span="18"><el-form-item :label="t('serviceDialog.remoteHost')"><el-input v-model="serviceForm.remoteHost" :placeholder="DEFAULT_REMOTE_HOST" /></el-form-item></el-col><el-col :span="6"><el-form-item :label="t('serviceDialog.remotePort')"><el-input-number v-model="serviceForm.remotePort" class="port-input" :min="1" :max="65535" :controls="false" :placeholder="String(DEFAULT_REMOTE_PORT)" align="left" /></el-form-item></el-col></el-row>
-        <el-form-item :label="t('serviceDialog.domain')"><el-input v-model="serviceDomainPrefix" :placeholder="defaultDomainPrefix()"><template #prepend>http://</template><template #append>.localhost</template></el-input><div class="form-help">{{ t('serviceDialog.domainHelp') }}</div></el-form-item>
-        <el-alert type="info" :closable="false" show-icon><template #title><span class="route-summary"><Monitor :size="14" />{{ t('serviceDialog.browser') }} → <code>{{ effectiveServiceDomain() }}</code> → SSH → <code>{{ effectiveRemoteHost() }}:{{ effectiveRemotePort() }}</code></span></template></el-alert>
+        <template v-if="serviceForm.serviceType === 'http'"><el-form-item :label="t('serviceDialog.domain')"><el-input v-model="serviceDomainPrefix" :placeholder="defaultDomainPrefix()"><template #prepend>http://</template><template #append>.localhost</template></el-input><div class="form-help">{{ t('serviceDialog.domainHelp') }}</div></el-form-item></template>
+        <el-row v-else :gutter="16"><el-col :span="18"><el-form-item :label="t('serviceDialog.localAddress')" prop="localAddress"><el-input v-model="serviceForm.localAddress" :placeholder="DEFAULT_LOCAL_ADDRESS" /></el-form-item></el-col><el-col :span="6"><el-form-item :label="t('serviceDialog.localPort')" prop="localPort"><el-input-number v-model="serviceForm.localPort" class="port-input" :min="1" :max="65535" :controls="false" align="left" /></el-form-item></el-col></el-row>
+        <el-alert type="info" :closable="false" show-icon><template #title><span class="route-summary"><component :is="serviceForm.serviceType === 'http' ? Monitor : Network" :size="14" />{{ t(serviceForm.serviceType === 'http' ? 'serviceDialog.browser' : 'serviceDialog.localClient') }} → <code>{{ serviceForm.serviceType === 'http' ? effectiveServiceDomain() : effectiveLocalEndpoint() }}</code> → SSH → <code>{{ effectiveRemoteHost() }}:{{ effectiveRemotePort() }}</code></span></template></el-alert>
       </el-form>
       <template #footer><div class="dialog-footer"><el-button v-if="serviceEditing" type="danger" plain :icon="Trash2" @click="deleteService(serviceForm)">{{ t('common.delete') }}</el-button><span /><el-button @click="serviceModal = false">{{ t('common.cancel') }}</el-button><el-button type="primary" @click="submitService">{{ t('common.save') }}</el-button></div></template>
     </el-dialog>
