@@ -208,6 +208,23 @@ async fn import_ssh_config(state: State<'_, AppState>) -> CommandResult<Vec<SshS
     state.import_ssh_config().await.map_err(format_error)
 }
 
+#[tauri::command]
+async fn import_app_config(
+    state: State<'_, AppState>,
+    path: String,
+) -> CommandResult<RuntimeSnapshot> {
+    state
+        .import_app_config(&path)
+        .await
+        .map_err(format_error)?;
+    Ok(state.snapshot().await)
+}
+
+#[tauri::command]
+async fn export_app_config(state: State<'_, AppState>, path: String) -> CommandResult<()> {
+    state.export_app_config(&path).await.map_err(format_error)
+}
+
 fn format_error(error: anyhow::Error) -> String {
     format!("{error:#}")
 }
@@ -216,6 +233,7 @@ fn format_error(error: anyhow::Error) -> String {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let config_path = app.path().app_config_dir()?.join("config.json");
             let state = AppState::load(app.handle().clone(), config_path)?;
@@ -245,6 +263,8 @@ pub fn run() {
             terminal_resize,
             close_terminal,
             import_ssh_config,
+            import_app_config,
+            export_app_config,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build SSHGate");

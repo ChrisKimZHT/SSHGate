@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type TagProps } from 'element-plus'
 import {
-  CirclePlus, ExternalLink, Fingerprint, Import, Monitor, Pencil, Plus, RefreshCw,
+  CirclePlus, ExternalLink, FileInput, FileOutput, Fingerprint, Import, Monitor, Pencil, Plus, RefreshCw,
   Server, Settings as Setting, TerminalSquare, Trash2,
 } from 'lucide-vue-next'
 import { api } from './api'
@@ -297,6 +298,39 @@ async function importConfig() {
     if (error !== 'cancel' && error !== 'close') await showError(error)
   }
 }
+async function importAppConfig() {
+  const path = await openFileDialog({
+    multiple: false,
+    directory: false,
+    filters: [{ name: 'SSHGate Config', extensions: ['json'] }],
+  })
+  if (typeof path !== 'string') return
+  try {
+    await ElMessageBox.confirm(
+      '导入将替换当前的服务器、应用、设置和主机指纹，并关闭现有终端与 SSH 连接。密码和私钥口令不会从配置文件导入。是否继续？',
+      '导入应用 Config',
+      { type: 'warning', confirmButtonText: '导入', cancelButtonText: '取消' },
+    )
+  } catch { return }
+  try {
+    snapshot.value = await api.importAppConfig(path)
+    terminalTabs.value = []
+    activeTerminalId.value = ''
+    Object.assign(settingsForm, snapshot.value.config.settings)
+    ElMessage.success('应用 Config 已导入')
+  } catch (error) { await showError(error) }
+}
+async function exportAppConfig() {
+  const path = await saveFileDialog({
+    defaultPath: 'sshgate-config.json',
+    filters: [{ name: 'SSHGate Config', extensions: ['json'] }],
+  })
+  if (!path) return
+  try {
+    await api.exportAppConfig(path)
+    ElMessage.success('应用 Config 已导出')
+  } catch (error) { await showError(error) }
+}
 async function saveSettings() { await run(() => api.saveSettings({ ...settingsForm }), '设置已保存，代理已重启') }
 
 onMounted(async () => {
@@ -332,7 +366,7 @@ onBeforeUnmount(() => unlistenState?.())
       </el-header>
       <el-main :class="['page-content', { 'terminal-content': page === 'terminal' }]">
         <template v-if="page === 'servers'">
-          <div class="page-heading"><div><h1>连接</h1><p>管理 SSH 服务器、远端应用和交互式终端。</p></div><el-space><el-button :icon="Import" @click="importConfig">导入 SSH Config</el-button><el-button type="primary" :icon="Plus" @click="showAddServer">添加服务器</el-button></el-space></div>
+          <div class="page-heading"><div><h1>连接</h1><p>管理 SSH 服务器、远端应用和交互式终端。</p></div><el-button type="primary" :icon="Plus" @click="showAddServer">添加服务器</el-button></div>
           <el-skeleton :loading="loading" animated :rows="6">
             <div v-if="servers.length" class="server-grid">
               <el-card v-for="server in servers" :key="server.id" shadow="hover" class="server-card">
@@ -377,6 +411,9 @@ onBeforeUnmount(() => unlistenState?.())
               <div class="settings-row"><el-form-item class="settings-address-field" label="监听地址"><el-input v-model="settingsForm.listenAddress" /></el-form-item><el-form-item class="settings-number-field" label="监听端口"><el-input-number v-model="settingsForm.listenPort" class="port-input" :min="1" :max="65535" :controls="false" align="left" /></el-form-item></div>
               <el-divider />
               <h3>连接恢复</h3><div class="settings-row"><el-form-item class="settings-number-field" label="重连间隔（秒）"><el-input-number v-model="settingsForm.reconnectDelaySeconds" :min="1" :max="300" controls-position="right" /></el-form-item><el-form-item class="settings-switch-field" label="启动时恢复应用"><el-switch v-model="settingsForm.autoStartServices" /></el-form-item></div>
+              <el-divider />
+              <h3>配置管理</h3><el-text type="info">应用 Config 包含服务器、应用、设置和主机指纹，不包含密码或私钥口令。</el-text>
+              <div class="config-actions"><el-button :icon="Import" @click="importConfig">导入 SSH Config</el-button><el-button :icon="FileInput" @click="importAppConfig">导入应用 Config</el-button><el-button :icon="FileOutput" @click="exportAppConfig">导出应用 Config</el-button></div>
               <div class="form-footer"><el-button type="primary" @click="saveSettings">保存设置</el-button></div>
             </el-form>
           </el-card>

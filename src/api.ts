@@ -27,4 +27,6 @@ export const api = {
     invoke<void>('terminal_resize', { terminalId, cols, rows }),
   closeTerminal: (terminalId: string) => invoke<void>('close_terminal', { terminalId }),
   importSshConfig: () => invoke<SshServer[]>('import_ssh_config'),
+  importAppConfig: (path: string) => invoke<RuntimeSnapshot>('import_app_config', { path }),
+  exportAppConfig: (path: string) => invoke<void>('export_app_config', { path }),
 }

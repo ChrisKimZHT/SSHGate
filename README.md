@@ -11,7 +11,7 @@ SSHGate 是一个轻量级 Tauri 2 桌面应用：把远端服务器的 Web 服�
 - `jupyter.gpu.localhost` 等多级 `.localhost` 域名，无需修改 hosts/DNS
 - xterm.js PTY、ANSI、UTF-8、Ctrl+C、Vim/tmux/top 和 window-change
 - 多终端标签、服务启停、私钥连接自动重连
-- JSON 配置持久化及 `~/.ssh/config` 基础导入
+- JSON 配置持久化、应用配置导入导出及 `~/.ssh/config` 基础导入
 
 ## 开发环境
 
@@ -53,4 +53,4 @@ cargo check
 
 ## 配置与安全
 
-配置保存在 Tauri 的应用配置目录 `app.sshgate.desktop/config.json`。文件只记录私钥路径，不记录私钥内容、私钥口令或密码。当前 MVP 不支持 SSH agent、ProxyJump 和 HTTPS 本地入口。
+配置保存在 Tauri 的应用配置目录 `app.sshgate.desktop/config.json`。设置页可导入或导出完整应用 Config；文件只记录私钥路径，不记录私钥内容、私钥口令或密码。当前 MVP 不支持 SSH agent、ProxyJump 和 HTTPS 本地入口。

@@ -1221,6 +1221,72 @@ impl AppState {
         Ok(added)
     }
 
+    pub async fn export_app_config(&self, path: &str) -> anyhow::Result<()> {
+        let config = self.0.config.read().await.clone();
+        let serialized = serde_json::to_string_pretty(&config)?;
+        tokio::fs::write(path, format!("{serialized}\n"))
+            .await
+            .with_context(|| format!("无法写入应用配置 {path}"))
+    }
+
+    pub async fn import_app_config(&self, path: &str) -> anyhow::Result<()> {
+        let raw = tokio::fs::read_to_string(path)
+            .await
+            .with_context(|| format!("无法读取应用配置 {path}"))?;
+        let config: AppConfig = serde_json::from_str(&raw)
+            .with_context(|| format!("应用配置文件格式不正确：{path}"))?;
+        validate_app_config(&config)?;
+
+        let terminal_ids: Vec<String> = self.0.terminals.lock().await.keys().cloned().collect();
+        for terminal_id in terminal_ids {
+            self.close_terminal(&terminal_id).await;
+        }
+        let sessions: Vec<Arc<Mutex<SshHandle>>> = self
+            .0
+            .sessions
+            .lock()
+            .await
+            .drain()
+            .map(|(_, handle)| handle)
+            .collect();
+        for session in sessions {
+            let _ = session
+                .lock()
+                .await
+                .disconnect(Disconnect::ByApplication, "SSHGate config import", "en")
+                .await;
+        }
+
+        let server_states = config
+            .servers
+            .iter()
+            .map(|server| {
+                (
+                    server.id.clone(),
+                    RuntimeState::new(ConnectionStatus::Stopped),
+                )
+            })
+            .collect();
+        let service_states = config
+            .services
+            .iter()
+            .map(|service| {
+                (
+                    service.id.clone(),
+                    RuntimeState::new(ServiceStatus::Stopped),
+                )
+            })
+            .collect();
+        *self.0.config.write().await = config;
+        *self.0.server_states.write().await = server_states;
+        *self.0.service_states.write().await = service_states;
+        self.persist().await?;
+        self.restart_proxy().await;
+        self.emit_state().await;
+        self.restore_services().await;
+        Ok(())
+    }
+
     pub async fn shutdown(&self) {
         self.0.shutting_down.store(true, Ordering::SeqCst);
         if let Some(task) = self.0.proxy_task.lock().await.take() {
@@ -1332,6 +1398,49 @@ fn validate_service(service: &WebService) -> anyhow::Result<()> {
                 .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
     }) {
         return Err(anyhow!("域名包含无效字符"));
+    }
+    Ok(())
+}
+
+fn validate_app_config(config: &AppConfig) -> anyhow::Result<()> {
+    if config.settings.listen_address.trim().is_empty()
+        || config.settings.listen_port == 0
+        || config.settings.reconnect_delay_seconds == 0
+    {
+        return Err(anyhow!("应用配置中的代理设置无效"));
+    }
+
+    let mut server_ids = HashSet::new();
+    let mut server_names = HashSet::new();
+    for server in &config.servers {
+        validate_server(server)?;
+        if server.id.trim().is_empty() || !server_ids.insert(server.id.clone()) {
+            return Err(anyhow!("应用配置中存在空白或重复的服务器 ID"));
+        }
+        if !server_names.insert(server.name.trim().to_ascii_lowercase()) {
+            return Err(anyhow!("应用配置中存在重复的服务器名称"));
+        }
+        if server.port == 0 {
+            return Err(anyhow!("应用配置中的服务器端口无效"));
+        }
+    }
+
+    let mut service_ids = HashSet::new();
+    let mut domains = HashSet::new();
+    for service in &config.services {
+        validate_service(service)?;
+        if service.id.trim().is_empty() || !service_ids.insert(service.id.clone()) {
+            return Err(anyhow!("应用配置中存在空白或重复的应用 ID"));
+        }
+        if !server_ids.contains(&service.server_id) {
+            return Err(anyhow!("应用配置中的应用引用了不存在的 SSH 服务器"));
+        }
+        if !domains.insert(service.domain.trim().to_ascii_lowercase()) {
+            return Err(anyhow!("应用配置中存在重复的访问域名"));
+        }
+        if service.remote_port == 0 {
+            return Err(anyhow!("应用配置中的远端端口无效"));
+        }
     }
     Ok(())
 }
