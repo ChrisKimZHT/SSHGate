@@ -428,9 +428,9 @@ onBeforeUnmount(() => {
           <div class="page-heading"><div><h1>指纹</h1><p>查看和管理 SSH 服务器当前保存的主机密钥指纹。</p></div></div>
           <el-card shadow="never" class="fingerprint-card">
             <el-table v-if="servers.length" :data="servers" class="fingerprint-table">
-              <el-table-column label="服务器" min-width="220"><template #default="{ row }"><div class="fingerprint-server"><b>{{ row.name }}</b><code>{{ row.host }}:{{ row.port }}</code></div></template></el-table-column>
-              <el-table-column label="已保存指纹" min-width="420"><template #default="{ row }"><code v-if="row.hostKeyFingerprint" class="fingerprint-value">{{ row.hostKeyFingerprint }}</code><el-text v-else type="info">尚未记录</el-text></template></el-table-column>
-              <el-table-column width="96" align="right"><template #default="{ row }"><el-button link type="danger" :icon="Trash2" :disabled="!row.hostKeyFingerprint" @click="clearServerFingerprint(row)">清除</el-button></template></el-table-column>
+              <el-table-column label="服务器" width="220"><template #default="{ row }"><div class="fingerprint-server"><b>{{ row.name }}</b><code>{{ row.host }}:{{ row.port }}</code></div></template></el-table-column>
+              <el-table-column label="已保存指纹" min-width="80"><template #default="{ row }"><code v-if="row.hostKeyFingerprint" class="fingerprint-value" :title="row.hostKeyFingerprint">{{ row.hostKeyFingerprint }}</code><el-text v-else type="info">尚未记录</el-text></template></el-table-column>
+              <el-table-column width="96" align="right" fixed="right"><template #default="{ row }"><el-button link type="danger" :icon="Trash2" :disabled="!row.hostKeyFingerprint" @click="clearServerFingerprint(row)">清除</el-button></template></el-table-column>
             </el-table>
             <el-empty v-else description="还没有 SSH 服务器" />
           </el-card>
