@@ -1,6 +1,6 @@
 [package]
 name = "sshgate"
-version = "0.2.0"
+version = "0.3.0"
 description = "Map remote web services to friendly .localhost domains over SSH"
 authors = ["SSHGate contributors"]
 edition = "2021"
