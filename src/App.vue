@@ -7,7 +7,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type TagProps } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, Check, CirclePlus, Copy, ExternalLink, FileInput, FileOutput, Fingerprint, Globe2, Import, Monitor, Network, Pencil, Plus, RefreshCw,
+  ArrowDown, ArrowUp, ArrowUpDown, Check, CirclePlus, Copy, ExternalLink, FileInput, FileOutput, Fingerprint, Globe2, Import, Monitor, Network, Pencil, Plus,
   Server, Settings as Setting, TerminalSquare, Trash2,
 } from 'lucide-vue-next'
 import { api } from './api'
@@ -473,7 +473,6 @@ onBeforeUnmount(() => {
     <el-container class="content-shell">
       <el-header class="topbar">
         <el-breadcrumb separator="/"><el-breadcrumb-item>SSHGate</el-breadcrumb-item><el-breadcrumb-item>{{ t(`nav.${page === 'servers' ? 'connections' : page}`) }}</el-breadcrumb-item></el-breadcrumb>
-        <el-button circle text :icon="RefreshCw" :title="t('actions.refreshStatus')" @click="refresh" />
       </el-header>
       <el-main :class="['page-content', { 'terminal-content': page === 'terminal' }]">
         <template v-if="page === 'servers'">
