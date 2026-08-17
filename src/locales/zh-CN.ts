@@ -29,6 +29,8 @@ export default {
   },
   actions: {
     refreshStatus: '刷新状态',
+    darkMode: '切换到夜间模式',
+    lightMode: '切换到日间模式',
     addServer: '添加服务器',
     openTerminal: '打开终端',
     addService: '添加应用',

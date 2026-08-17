@@ -2,13 +2,14 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { getVersion } from '@tauri-apps/api/app'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type TagProps } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, Check, CirclePlus, Copy, ExternalLink, FileInput, FileOutput, Fingerprint, Globe2, Import, Monitor, Network, Pencil, Plus,
-  Server, Settings as Setting, TerminalSquare, Trash2,
+  ArrowDown, ArrowUp, ArrowUpDown, Check, CirclePlus, Copy, ExternalLink, FileInput, FileOutput, Fingerprint, Globe2, Import, Monitor, Moon, Network, Pencil, Plus,
+  Server, Settings as Setting, Sun, TerminalSquare, Trash2,
 } from 'lucide-vue-next'
 import { api } from './api'
 import TerminalPane from './components/TerminalPane.vue'
@@ -27,6 +28,7 @@ const DEFAULT_PRIVATE_KEY_PATH = '~/.ssh/id_ed25519'
 const DEFAULT_REMOTE_HOST = '127.0.0.1'
 const DEFAULT_REMOTE_PORT = 3000
 const DEFAULT_LOCAL_ADDRESS = '127.0.0.1'
+const THEME_TRANSITION_MS = 180
 
 const page = ref<Page>('servers')
 const snapshot = ref<RuntimeSnapshot>()
@@ -47,12 +49,28 @@ const activeTerminalId = ref('')
 const appVersion = ref('')
 const sortMode = ref(false)
 const sortSaving = ref(false)
+const isDark = ref(localStorage.getItem('sshgate-theme') === 'dark')
 const sortedServerIds = ref<string[]>([])
 const sortedServiceIds = reactive<Record<string, string[]>>({})
 let unlistenState: UnlistenFn | undefined
 let settingsSaveTimer: number | undefined
+let themeTransitionTimer: number | undefined
 let settingsRevision = 0
 let settingsSyncing = false
+
+function toggleTheme() {
+  const root = document.documentElement
+  window.clearTimeout(themeTransitionTimer)
+  root.classList.add('theme-transition')
+  void root.offsetWidth
+  isDark.value = !isDark.value
+  root.classList.toggle('dark', isDark.value)
+  void getCurrentWindow().setTheme(isDark.value ? 'dark' : 'light').catch(() => {})
+  localStorage.setItem('sshgate-theme', isDark.value ? 'dark' : 'light')
+  themeTransitionTimer = window.setTimeout(() => {
+    root.classList.remove('theme-transition')
+  }, THEME_TRANSITION_MS + 40)
+}
 
 const blankServer = (): ServerForm => ({
   id: crypto.randomUUID(), name: '', host: '', port: undefined, username: '', authType: 'key', privateKeyPath: '', rememberSecret: false, hostKeyFingerprint: null,
@@ -440,8 +458,7 @@ async function exportAppConfig() {
   } catch (error) { await showError(error) }
 }
 onMounted(async () => {
-  document.documentElement.classList.remove('dark')
-  localStorage.removeItem('sshgate-theme')
+  document.documentElement.classList.toggle('dark', isDark.value)
   const versionPromise = getVersion().catch(() => '')
   unlistenState = await listen<RuntimeSnapshot>('state-changed', ({ payload }) => { snapshot.value = payload })
   await refresh()
@@ -449,6 +466,8 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => {
   window.clearTimeout(settingsSaveTimer)
+  window.clearTimeout(themeTransitionTimer)
+  document.documentElement.classList.remove('theme-transition')
   unlistenState?.()
 })
 </script>
@@ -473,6 +492,7 @@ onBeforeUnmount(() => {
     <el-container class="content-shell">
       <el-header class="topbar">
         <el-breadcrumb separator="/"><el-breadcrumb-item>SSHGate</el-breadcrumb-item><el-breadcrumb-item>{{ t(`nav.${page === 'servers' ? 'connections' : page}`) }}</el-breadcrumb-item></el-breadcrumb>
+        <el-button circle text :icon="isDark ? Sun : Moon" :title="t(isDark ? 'actions.lightMode' : 'actions.darkMode')" :aria-label="t(isDark ? 'actions.lightMode' : 'actions.darkMode')" @click="toggleTheme" />
       </el-header>
       <el-main :class="['page-content', { 'terminal-content': page === 'terminal' }]">
         <template v-if="page === 'servers'">
