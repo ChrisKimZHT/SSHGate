@@ -107,6 +107,17 @@ impl AppState {
         let _ = self.0.app.emit("state-changed", self.snapshot().await);
     }
 
+    pub async fn has_active_connections(&self) -> bool {
+        let sessions: Vec<Arc<Mutex<SshHandle>>> =
+            self.0.sessions.lock().await.values().cloned().collect();
+        for session in sessions {
+            if !session.lock().await.is_closed() {
+                return true;
+            }
+        }
+        false
+    }
+
     async fn persist(&self) -> anyhow::Result<()> {
         if let Some(parent) = self.0.config_path.parent() {
             tokio::fs::create_dir_all(parent).await?;

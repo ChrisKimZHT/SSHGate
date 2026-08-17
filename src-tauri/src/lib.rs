@@ -5,6 +5,8 @@ mod ssh;
 mod state;
 mod tcp_proxy;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use model::{RuntimeSnapshot, Settings, SshServer, WebService};
 use state::AppState;
 use tauri::{
@@ -15,6 +17,8 @@ use tauri::{
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 type CommandResult<T> = Result<T, String>;
+
+static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 async fn get_snapshot(state: State<'_, AppState>) -> CommandResult<RuntimeSnapshot> {
@@ -318,21 +322,43 @@ pub fn run() {
             match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     api.prevent_close();
+                    if CLOSE_CONFIRMATION_OPEN.swap(true, Ordering::SeqCst) {
+                        return;
+                    }
+
                     let app = window.app_handle().clone();
-                    app.dialog()
-                        .message("确定要退出 SSHGate 吗？正在运行的连接和服务将会停止。")
-                        .title("确认退出")
-                        .kind(MessageDialogKind::Warning)
-                        .buttons(MessageDialogButtons::OkCancelCustom(
-                            "退出".into(),
-                            "取消".into(),
-                        ))
-                        .parent(window)
-                        .show(move |confirmed| {
-                            if confirmed {
-                                app.exit(0);
-                            }
-                        });
+                    let parent = window.clone();
+                    let state = app
+                        .try_state::<AppState>()
+                        .map(|state| state.inner().clone());
+                    tauri::async_runtime::spawn(async move {
+                        let has_active_connections = match state {
+                            Some(state) => state.has_active_connections().await,
+                            None => true,
+                        };
+                        if !has_active_connections {
+                            app.exit(0);
+                            return;
+                        }
+
+                        let exit_app = app.clone();
+                        app.dialog()
+                            .message("确定要退出 SSHGate 吗？正在运行的连接和服务将会停止。")
+                            .title("确认退出")
+                            .kind(MessageDialogKind::Warning)
+                            .buttons(MessageDialogButtons::OkCancelCustom(
+                                "退出".into(),
+                                "取消".into(),
+                            ))
+                            .parent(&parent)
+                            .show(move |confirmed| {
+                                if confirmed {
+                                    exit_app.exit(0);
+                                } else {
+                                    CLOSE_CONFIRMATION_OPEN.store(false, Ordering::SeqCst);
+                                }
+                            });
+                    });
                 }
                 tauri::WindowEvent::Resized(_) if window.is_minimized().unwrap_or(false) => {
                     let _ = window.hide();
