@@ -29,6 +29,7 @@ const DEFAULT_REMOTE_HOST = '127.0.0.1'
 const DEFAULT_REMOTE_PORT = 3000
 const DEFAULT_LOCAL_ADDRESS = '127.0.0.1'
 const THEME_TRANSITION_MS = 180
+const PROJECT_URL = 'https://github.com/ChrisKimZHT/SSHGate'
 
 const page = ref<Page>('servers')
 const snapshot = ref<RuntimeSnapshot>()
@@ -457,6 +458,11 @@ async function exportAppConfig() {
     ElMessage.success(t('config.appExported'))
   } catch (error) { await showError(error) }
 }
+async function openProjectPage() {
+  try {
+    await openUrl(PROJECT_URL)
+  } catch (error) { await showError(error) }
+}
 onMounted(async () => {
   document.documentElement.classList.toggle('dark', isDark.value)
   const versionPromise = getVersion().catch(() => '')
@@ -475,7 +481,7 @@ onBeforeUnmount(() => {
 <template>
   <el-container class="app-frame">
     <el-aside width="232px" class="app-sidebar">
-      <div class="brand"><span class="brand-icon"><TerminalSquare :size="20" /></span><div><strong>SSHGate</strong><small>{{ appVersion ? t('brand.version', { version: appVersion }) : '' }}</small></div></div>
+      <div class="brand"><span class="brand-icon"><TerminalSquare :size="20" /></span><div><strong>SSHGate</strong><small v-if="appVersion" class="brand-version"><span>{{ t('brand.version', { version: appVersion }) }}</span><el-link :href="PROJECT_URL" :title="PROJECT_URL" :underline="false" @click.prevent="openProjectPage">ChrisKim</el-link></small></div></div>
       <el-menu :default-active="page" class="nav-menu" @select="page = $event as Page">
         <el-menu-item index="servers"><Server :size="18" /><span>{{ t('nav.connections') }}</span><el-tag v-if="runningServiceCount" class="nav-counter" type="success" effect="light" size="small" round>{{ runningServiceCount }}</el-tag></el-menu-item>
         <el-menu-item index="terminal"><TerminalSquare :size="18" /><span>{{ t('nav.terminal') }}</span><el-tag v-if="terminalTabs.length" class="nav-counter" type="primary" effect="light" size="small" round>{{ terminalTabs.length }}</el-tag></el-menu-item>

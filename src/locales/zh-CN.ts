@@ -1,6 +1,6 @@
 export default {
   brand: {
-    version: 'v{version}',
+    version: 'v{version} by',
   },
   nav: {
     connections: '连接',

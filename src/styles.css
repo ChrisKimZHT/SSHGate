@@ -42,6 +42,8 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .brand > div { display: flex; min-width: 0; flex-direction: column; }
 .brand strong { color: var(--el-text-color-primary); font-size: 17px; line-height: 1.25; letter-spacing: -.3px; }
 .brand small { color: var(--el-text-color-secondary); font-size: 10px; }
+.brand-version { display: flex; align-items: baseline; gap: 3px; white-space: nowrap; }
+.brand-version .el-link { font-size: inherit; line-height: inherit; }
 .nav-menu { flex: 1; padding: 10px 12px; border-right: 0 !important; background: transparent !important; }
 .nav-menu .el-menu-item { height: 46px; margin-bottom: 5px; border-radius: 9px; gap: 12px; }
 .nav-menu .el-menu-item.is-active { font-weight: 600; background: var(--el-color-primary-light-9); }
