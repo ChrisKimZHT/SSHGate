@@ -12,6 +12,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager, State,
 };
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 type CommandResult<T> = Result<T, String>;
 
@@ -310,11 +311,33 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if window.label() == "main"
-                && matches!(event, tauri::WindowEvent::Resized(_))
-                && window.is_minimized().unwrap_or(false)
-            {
-                let _ = window.hide();
+            if window.label() != "main" {
+                return;
+            }
+
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    let app = window.app_handle().clone();
+                    app.dialog()
+                        .message("确定要退出 SSHGate 吗？正在运行的连接和服务将会停止。")
+                        .title("确认退出")
+                        .kind(MessageDialogKind::Warning)
+                        .buttons(MessageDialogButtons::OkCancelCustom(
+                            "退出".into(),
+                            "取消".into(),
+                        ))
+                        .parent(window)
+                        .show(move |confirmed| {
+                            if confirmed {
+                                app.exit(0);
+                            }
+                        });
+                }
+                tauri::WindowEvent::Resized(_) if window.is_minimized().unwrap_or(false) => {
+                    let _ = window.hide();
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
