@@ -7,4 +7,11 @@ import 'element-plus/dist/index.css'
 import './styles.css'
 import '@xterm/xterm/css/xterm.css'
 
+window.addEventListener('keydown', (event) => {
+  const isRefreshShortcut = event.key === 'F5'
+    || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'r')
+
+  if (isRefreshShortcut) event.preventDefault()
+}, { capture: true })
+
 createApp(App).use(i18n).use(ElementPlus, { locale: zhCn }).mount('#app')
