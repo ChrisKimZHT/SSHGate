@@ -7,7 +7,11 @@ mod tcp_proxy;
 
 use model::{RuntimeSnapshot, Settings, SshServer, WebService};
 use state::AppState;
-use tauri::{Manager, State};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Manager, State,
+};
 
 type CommandResult<T> = Result<T, String>;
 
@@ -243,6 +247,52 @@ fn format_error(error: anyhow::Error) -> String {
     format!("{error:#}")
 }
 
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "tray_show", "显示 SSHGate", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "tray_quit", "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
+
+    let mut tray = TrayIconBuilder::new()
+        .tooltip("SSHGate")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "tray_show" => show_main_window(app),
+            "tray_quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                } | TrayIconEvent::DoubleClick {
+                    button: MouseButton::Left,
+                    ..
+                }
+            ) {
+                show_main_window(tray.app_handle());
+            }
+        });
+
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+
+    tray.build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -252,11 +302,20 @@ pub fn run() {
             let config_path = app.path().app_config_dir()?.join("config.json");
             let state = AppState::load(app.handle().clone(), config_path)?;
             app.manage(state.clone());
+            setup_tray(app.handle())?;
             tauri::async_runtime::spawn(async move {
                 state.restart_proxy().await;
                 state.restore_services().await;
             });
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if window.label() == "main"
+                && matches!(event, tauri::WindowEvent::Resized(_))
+                && window.is_minimized().unwrap_or(false)
+            {
+                let _ = window.hide();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
