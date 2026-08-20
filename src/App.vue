@@ -9,7 +9,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type TagPro
 import { useI18n } from 'vue-i18n'
 import {
   ArrowDown, ArrowUp, ArrowUpDown, Check, CirclePlus, Copy, ExternalLink, FileInput, FileOutput, Fingerprint, Globe2, Import, Monitor, Moon, Network, Pencil, Plus,
-  Server, Settings as Setting, Sun, TerminalSquare, Trash2,
+  PanelLeftClose, PanelLeftOpen, Server, Settings as Setting, Sun, TerminalSquare, Trash2,
 } from 'lucide-vue-next'
 import { api } from './api'
 import TerminalPane from './components/TerminalPane.vue'
@@ -51,6 +51,8 @@ const appVersion = ref('')
 const sortMode = ref(false)
 const sortSaving = ref(false)
 const isDark = ref(localStorage.getItem('sshgate-theme') === 'dark')
+const sidebarCollapsed = ref(localStorage.getItem('sshgate-sidebar-collapsed') === 'true'
+  || (localStorage.getItem('sshgate-sidebar-collapsed') === null && window.matchMedia('(max-width: 880px)').matches))
 const sortedServerIds = ref<string[]>([])
 const sortedServiceIds = reactive<Record<string, string[]>>({})
 let unlistenState: UnlistenFn | undefined
@@ -71,6 +73,11 @@ function toggleTheme() {
   themeTransitionTimer = window.setTimeout(() => {
     root.classList.remove('theme-transition')
   }, THEME_TRANSITION_MS + 40)
+}
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  localStorage.setItem('sshgate-sidebar-collapsed', String(sidebarCollapsed.value))
 }
 
 const blankServer = (): ServerForm => ({
@@ -480,7 +487,7 @@ onBeforeUnmount(() => {
 
 <template>
   <el-container class="app-frame">
-    <el-aside width="232px" class="app-sidebar">
+    <el-aside :width="sidebarCollapsed ? '60px' : '232px'" :class="['app-sidebar', { 'is-collapsed': sidebarCollapsed }]">
       <div class="brand"><span class="brand-icon"><TerminalSquare :size="20" /></span><div><strong>SSHGate</strong><small v-if="appVersion" class="brand-version"><span>{{ t('brand.version', { version: appVersion }) }}</span><el-link :href="PROJECT_URL" :title="PROJECT_URL" :underline="false" @click.prevent="openProjectPage">ChrisKim</el-link></small></div></div>
       <el-menu :default-active="page" class="nav-menu" @select="page = $event as Page">
         <el-menu-item index="servers"><Server :size="18" /><span>{{ t('nav.connections') }}</span><el-tag v-if="runningServiceCount" class="nav-counter" type="success" effect="light" size="small" round>{{ runningServiceCount }}</el-tag></el-menu-item>
@@ -489,9 +496,12 @@ onBeforeUnmount(() => {
         <el-menu-item index="settings"><Setting :size="18" /><span>{{ t('nav.settings') }}</span></el-menu-item>
       </el-menu>
       <div class="sidebar-footer">
-        <el-card shadow="never" class="sidebar-control-card">
-          <div class="proxy-line"><el-badge is-dot :type="proxyHealthy ? 'success' : 'danger'" /><div><b>{{ t('sidebar.localProxy') }}</b><small>{{ snapshot?.proxyError || `${settingsForm.listenAddress}:${settingsForm.listenPort}` }}</small></div></div>
+        <el-card shadow="never" class="sidebar-control-card" :title="snapshot?.proxyError || `${t('sidebar.localProxy')} · ${settingsForm.listenAddress}:${settingsForm.listenPort}`">
+          <div class="proxy-line"><span :class="['proxy-status-dot', proxyHealthy ? 'is-healthy' : 'is-error']" aria-hidden="true" /><div><b>{{ t('sidebar.localProxy') }}</b><small>{{ snapshot?.proxyError || `${settingsForm.listenAddress}:${settingsForm.listenPort}` }}</small></div></div>
         </el-card>
+        <el-button class="sidebar-collapse-button" text :icon="sidebarCollapsed ? PanelLeftOpen : PanelLeftClose" :title="t(sidebarCollapsed ? 'actions.expandSidebar' : 'actions.collapseSidebar')" :aria-label="t(sidebarCollapsed ? 'actions.expandSidebar' : 'actions.collapseSidebar')" @click="toggleSidebar">
+          <span>{{ t('actions.collapseSidebar') }}</span>
+        </el-button>
       </div>
     </el-aside>
 

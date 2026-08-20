@@ -36,7 +36,7 @@ button, input, select { font: inherit; }
 code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font-size: .86em; }
 
 .app-frame { width: 100%; height: 100%; background: var(--app-page); }
-.app-sidebar { display: flex; flex-direction: column; border-right: 1px solid var(--app-border); background: var(--app-sidebar); transition: background-color var(--theme-transition-duration) var(--theme-transition-easing), border-color var(--theme-transition-duration) var(--theme-transition-easing); }
+.app-sidebar { display: flex; flex-direction: column; border-right: 1px solid var(--app-border); background: var(--app-sidebar); transition: width .2s ease, background-color var(--theme-transition-duration) var(--theme-transition-easing), border-color var(--theme-transition-duration) var(--theme-transition-easing); }
 .brand { display: flex; align-items: center; gap: 11px; height: 76px; padding: 0 20px; }
 .brand-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: #fff; background: var(--app-brand); box-shadow: 0 7px 16px rgb(37 99 235 / 22%); }
 .brand > div { display: flex; min-width: 0; flex-direction: column; }
@@ -52,10 +52,29 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .sidebar-control-card { border-radius: 12px; background: var(--el-fill-color-lighter); }
 .sidebar-control-card .el-card__body { padding: 13px; }
 .sidebar-control-card .el-divider { margin: 13px 0; }
+.sidebar-collapse-button { width: 100%; height: 36px; justify-content: flex-start; padding: 0 13px; }
+.sidebar-collapse-button span { margin-left: 5px; }
 .proxy-line { display: flex; align-items: center; gap: 12px; }
+.proxy-status-dot { display: block; flex: 0 0 10px; width: 10px; height: 10px; border: 2px solid var(--app-sidebar); border-radius: 50%; box-shadow: 0 0 0 2px var(--el-border-color-lighter); }
+.proxy-status-dot.is-healthy { background: var(--el-color-success); }
+.proxy-status-dot.is-error { background: var(--el-color-danger); }
 .proxy-line > div { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .proxy-line b { color: var(--el-text-color-primary); font-size: 12px; }
 .proxy-line small { overflow: hidden; color: var(--el-text-color-secondary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+
+.app-sidebar.is-collapsed .brand { justify-content: center; padding: 0; }
+.app-sidebar.is-collapsed .brand > div,
+.app-sidebar.is-collapsed .nav-menu .el-menu-item > span,
+.app-sidebar.is-collapsed .nav-menu .nav-counter,
+.app-sidebar.is-collapsed .sidebar-collapse-button span { display: none; }
+.app-sidebar.is-collapsed .nav-menu { padding: 10px 7px; }
+.app-sidebar.is-collapsed .nav-menu .el-menu-item { justify-content: center; padding: 0 !important; }
+.app-sidebar.is-collapsed .sidebar-footer { align-items: center; padding: 12px 7px; }
+.app-sidebar.is-collapsed .sidebar-control-card { width: 40px; height: 40px; border-radius: 10px; }
+.app-sidebar.is-collapsed .sidebar-control-card .el-card__body { display: grid; height: 100%; place-items: center; padding: 0; }
+.app-sidebar.is-collapsed .proxy-line { justify-content: center; }
+.app-sidebar.is-collapsed .proxy-line > div { display: none; }
+.app-sidebar.is-collapsed .sidebar-collapse-button { width: 40px; justify-content: center; padding: 0; }
 
 .content-shell { min-width: 0; height: 100%; }
 .topbar { display: flex; align-items: center; justify-content: space-between; height: 54px; padding: 0 28px; border-bottom: 1px solid var(--app-border); background: var(--app-sidebar); transition: background-color var(--theme-transition-duration) var(--theme-transition-easing), border-color var(--theme-transition-duration) var(--theme-transition-easing); }
@@ -150,11 +169,6 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .route-summary { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 
 @media (max-width: 880px) {
-  .app-sidebar { width: 76px !important; }
-  .brand { justify-content: center; padding: 0; }
-  .brand > div, .nav-menu .el-menu-item > span, .nav-menu .nav-counter, .sidebar-footer { display: none; }
-  .nav-menu { padding: 10px; }
-  .nav-menu .el-menu-item { justify-content: center; padding: 0 !important; }
   .page-content { padding: 24px 20px 38px; }
   .page-heading { align-items: flex-start; flex-direction: column; }
 }

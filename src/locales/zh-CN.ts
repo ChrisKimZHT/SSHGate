@@ -44,6 +44,8 @@ export default {
     finishSorting: '完成',
     moveUp: '上移',
     moveDown: '下移',
+    collapseSidebar: '收起侧栏',
+    expandSidebar: '展开侧栏',
   },
   connections: {
     title: '连接',
