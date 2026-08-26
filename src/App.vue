@@ -17,7 +17,8 @@ import type { RuntimeSnapshot, Settings, SshServer, WebService } from './types'
 import { showError } from './utils/errorDialog'
 
 type Page = 'servers' | 'terminal' | 'fingerprints' | 'settings'
-interface TerminalTab { id: string; serverId: string; title: string; password?: string }
+type TerminalStatusTone = 'pending' | 'connected' | 'closed' | 'error'
+interface TerminalTab { id: string; serverId: string; title: string; password?: string; status: TerminalStatusTone }
 type ServerForm = Omit<SshServer, 'port'> & { port?: number }
 type ServiceForm = Omit<WebService, 'remotePort' | 'localPort'> & { remotePort?: number; localPort?: number }
 
@@ -404,7 +405,7 @@ async function openTerminal(server: SshServer) {
   const secret = await ensureServerConnection(server)
   if (secret === null) return
   const id = crypto.randomUUID()
-  terminalTabs.value.push({ id, serverId: server.id, title: server.name, password: secret })
+  terminalTabs.value.push({ id, serverId: server.id, title: server.name, password: secret, status: 'pending' })
   activeTerminalId.value = id
   page.value = 'terminal'
 }
@@ -557,7 +558,7 @@ onBeforeUnmount(() => {
 
         <div v-show="page === 'terminal'" class="terminal-workspace">
           <el-tabs v-if="terminalTabs.length" v-model="activeTerminalId" type="card" closable class="terminal-tabs" @tab-remove="closeTerminal(String($event))">
-            <el-tab-pane v-for="tab in terminalTabs" :key="tab.id" :name="tab.id" :label="tab.title"><TerminalPane :terminal-id="tab.id" :server-id="tab.serverId" :password="tab.password" @closed="closeTerminal(tab.id)" /></el-tab-pane>
+            <el-tab-pane v-for="tab in terminalTabs" :key="tab.id" :name="tab.id"><template #label><span :class="['terminal-tab-label', `is-${tab.status}`]">{{ tab.title }}</span></template><TerminalPane :terminal-id="tab.id" :server-id="tab.serverId" :password="tab.password" @closed="closeTerminal(tab.id)" @status="tab.status = $event" /></el-tab-pane>
           </el-tabs>
           <el-empty v-if="!terminalTabs.length" :description="t('terminal.empty')" />
         </div>

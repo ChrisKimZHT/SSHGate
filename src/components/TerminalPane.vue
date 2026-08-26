@@ -13,7 +13,8 @@ const props = defineProps<{
   serverId: string
   password?: string
 }>()
-const emit = defineEmits<{ closed: [] }>()
+type TerminalStatusTone = 'pending' | 'connected' | 'closed' | 'error'
+const emit = defineEmits<{ closed: []; status: [tone: TerminalStatusTone] }>()
 const { t } = useI18n()
 
 const host = ref<HTMLElement>()
@@ -87,11 +88,13 @@ onMounted(async () => {
   unlistenClosed = await listen<TerminalEvent>('terminal-closed', ({ payload }) => {
     if (payload.terminalId !== props.terminalId) return
     status.value = payload.message || (payload.exitStatus != null ? t('terminal.remoteExited', { status: payload.exitStatus }) : t('terminal.closed'))
+    emit('status', 'closed')
     terminal?.writeln(`\r\n\x1b[38;5;244m${status.value}\x1b[0m`)
   })
 
   terminal.onData((data) => api.terminalInput(props.terminalId, data).catch((error) => {
     status.value = t('terminal.inputFailed')
+    emit('status', 'error')
     void showError(error)
   }))
 
@@ -108,9 +111,11 @@ onMounted(async () => {
     remoteTerminalOpen = true
     await fitAndResize()
     status.value = t('terminal.connected')
+    emit('status', 'connected')
     terminal.focus()
   } catch (error) {
     status.value = t('terminal.openFailed')
+    emit('status', 'error')
     await showError(error)
   }
 })
@@ -128,6 +133,5 @@ onBeforeUnmount(() => {
 <template>
   <div class="terminal-pane">
     <div ref="host" class="terminal-host" />
-    <span class="terminal-status">{{ status }}</span>
   </div>
 </template>

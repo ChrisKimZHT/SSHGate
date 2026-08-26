@@ -114,23 +114,29 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .terminal-workspace { position: relative; width: 100%; height: 100%; background: var(--terminal-bg); }
 .terminal-workspace > .el-empty { height: 100%; background: var(--app-page); }
 .terminal-tabs { height: 100%; }
-.terminal-tabs > .el-tabs__header { height: 45px; margin: 0; padding: 7px 10px 0; border-bottom-color: #29323a; background: #11171c; }
-.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__nav { overflow: hidden; border-color: #29323a; border-radius: 7px 7px 0 0; }
-.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__item { height: 37px; border-left-color: #29323a; color: #8d9aa2; transition: color .18s, background-color .18s; }
-.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__item:hover { color: #c8d3d9; background: #151d23; }
-.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__item.is-active { color: #dce5e9; background: var(--terminal-bg); }
-.terminal-tabs > .el-tabs__content { height: calc(100% - 45px); }
+.terminal-tabs > .el-tabs__header { height: 44px; margin: 0; padding: 0 12px; border-bottom: 1px solid #273139; background: #11171c; }
+.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__nav { border: 0; }
+.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__item { position: relative; height: 44px; padding: 0 12px !important; border: 0; color: #7f8c95; font-size: 13px; font-weight: 500; transition: color .18s ease, background-color .18s ease; }
+.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__item:hover { color: #c9d2d8; background: rgb(255 255 255 / 3%); }
+.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__item.is-active { color: #edf2f5; background: transparent; }
+.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__item::after { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; background: #59666f; content: ''; opacity: 0; }
+.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__item.is-active::after { opacity: 1; }
+.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__item:has(.terminal-tab-label.is-pending)::after { background: #d5b95f; }
+.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__item:has(.terminal-tab-label.is-connected)::after { background: #60c99a; }
+.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__item:has(.terminal-tab-label.is-error)::after { background: #e56b73; }
+.terminal-tabs.el-tabs--card > .el-tabs__header .el-tabs__item .is-icon-close { right: 0; display: inline-flex; flex: 0 0 20px; width: 20px; height: 20px; align-items: center; justify-content: center; margin-right: -3px; margin-left: 6px; color: #65727b; overflow: visible; }
+.terminal-tabs .el-tabs__item .is-icon-close:hover { color: #e8edef; background: #303b43; }
+.terminal-tabs > .el-tabs__content { height: calc(100% - 44px); }
 .terminal-tabs .el-tab-pane { height: 100%; }
-.terminal-pane { position: relative; width: 100%; height: 100%; padding: 13px 8px 8px 13px; background: var(--terminal-bg); }
-.terminal-host { width: 100%; height: 100%; }
+.terminal-pane { position: relative; width: 100%; height: 100%; background: var(--terminal-bg); }
+.terminal-host { width: 100%; height: 100%; background: var(--terminal-bg); overflow: hidden; }
+.terminal-host .xterm { height: 100%; padding: 14px 8px 8px 14px; }
 .terminal-host .xterm .xterm-viewport { background-color: transparent; scrollbar-color: #34434d transparent; scrollbar-width: thin; }
 .terminal-host .xterm .xterm-viewport::-webkit-scrollbar { width: 8px; }
 .terminal-host .xterm .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
 .terminal-host .xterm .xterm-viewport::-webkit-scrollbar-thumb { min-height: 36px; border: 2px solid var(--terminal-bg); border-radius: 999px; background: #34434d; }
 .terminal-host .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover { background: #4b5d68; }
 .terminal-host .xterm .xterm-viewport::-webkit-scrollbar-corner { background: transparent; }
-.terminal-status { position: absolute; z-index: 2; top: 9px; right: 13px; padding: 2px 6px; color: #697781; background: rgb(11 16 21 / 80%); font: 9px "Cascadia Code", Consolas, monospace; pointer-events: none; }
-
 .fingerprint-card { max-width: 1180px; margin: 0 auto; border-radius: 12px; }
 .fingerprint-card > .el-card__body { padding: 8px 20px; }
 .fingerprint-table { width: 100%; min-width: 0; }
