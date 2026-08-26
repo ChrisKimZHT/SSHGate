@@ -160,6 +160,12 @@ export default {
     deleteService: '确定删除应用“{name}”？',
     deleteServiceTitle: '删除应用',
   },
+  exitDialog: {
+    title: '退出 SSHGate？',
+    subtitle: '当前仍有任务正在运行',
+    message: '退出后，正在运行的 SSH 连接、端口转发和终端会话都将停止。',
+    confirm: '退出应用',
+  },
   config: {
     fileType: 'SSHGate Config',
     importSshMessage: '将读取本机 ~/.ssh/config 并导入其中可用的 SSH 服务器。已存在的同名配置不会重复导入，是否继续？',

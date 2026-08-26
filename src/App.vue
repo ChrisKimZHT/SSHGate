@@ -9,7 +9,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type TagPro
 import { useI18n } from 'vue-i18n'
 import {
   ArrowDown, ArrowUp, ArrowUpDown, Check, CirclePlus, Copy, ExternalLink, FileInput, FileOutput, Fingerprint, Globe2, Import, Monitor, Moon, Network, Pencil, Plus,
-  PanelLeftClose, PanelLeftOpen, Server, Settings as Setting, Sun, TerminalSquare, Trash2,
+  PanelLeftClose, PanelLeftOpen, Server, Settings as Setting, Sun, TerminalSquare, Trash2, TriangleAlert,
 } from 'lucide-vue-next'
 import { api } from './api'
 import TerminalPane from './components/TerminalPane.vue'
@@ -36,6 +36,8 @@ const snapshot = ref<RuntimeSnapshot>()
 const loading = ref(true)
 const serverModal = ref(false)
 const serviceModal = ref(false)
+const exitModal = ref(false)
+const exitResolving = ref(false)
 const serverEditing = ref(false)
 const serviceEditing = ref(false)
 const serverFormRef = ref<FormInstance>()
@@ -56,6 +58,7 @@ const sidebarCollapsed = ref(localStorage.getItem('sshgate-sidebar-collapsed') =
 const sortedServerIds = ref<string[]>([])
 const sortedServiceIds = reactive<Record<string, string[]>>({})
 let unlistenState: UnlistenFn | undefined
+let unlistenExitConfirmation: UnlistenFn | undefined
 let settingsSaveTimer: number | undefined
 let themeTransitionTimer: number | undefined
 let settingsRevision = 0
@@ -470,10 +473,31 @@ async function openProjectPage() {
     await openUrl(PROJECT_URL)
   } catch (error) { await showError(error) }
 }
+async function resolveExitConfirmation(confirmed: boolean) {
+  if (exitResolving.value) return
+  exitResolving.value = true
+  try {
+    await api.resolveExitConfirmation(confirmed)
+    if (!confirmed) exitModal.value = false
+  } catch (error) {
+    exitResolving.value = false
+    exitModal.value = true
+    await showError(error)
+  }
+}
+function cancelExitConfirmation() {
+  void resolveExitConfirmation(false)
+}
 onMounted(async () => {
   document.documentElement.classList.toggle('dark', isDark.value)
   const versionPromise = getVersion().catch(() => '')
-  unlistenState = await listen<RuntimeSnapshot>('state-changed', ({ payload }) => { snapshot.value = payload })
+  ;[unlistenState, unlistenExitConfirmation] = await Promise.all([
+    listen<RuntimeSnapshot>('state-changed', ({ payload }) => { snapshot.value = payload }),
+    listen('exit-confirmation-requested', () => {
+      exitResolving.value = false
+      exitModal.value = true
+    }),
+  ])
   await refresh()
   appVersion.value = await versionPromise
 })
@@ -482,6 +506,7 @@ onBeforeUnmount(() => {
   window.clearTimeout(themeTransitionTimer)
   document.documentElement.classList.remove('theme-transition')
   unlistenState?.()
+  unlistenExitConfirmation?.()
 })
 </script>
 
@@ -589,6 +614,22 @@ onBeforeUnmount(() => {
         <el-alert type="info" :closable="false" show-icon><template #title><span class="route-summary"><component :is="serviceForm.serviceType === 'http' ? Monitor : Network" :size="14" />{{ t(serviceForm.serviceType === 'http' ? 'serviceDialog.browser' : 'serviceDialog.localClient') }} → <code>{{ serviceForm.serviceType === 'http' ? effectiveServiceDomain() : effectiveLocalEndpoint() }}</code> → SSH → <code>{{ effectiveRemoteHost() }}:{{ effectiveRemotePort() }}</code></span></template></el-alert>
       </el-form>
       <template #footer><div class="dialog-footer"><el-button v-if="serviceEditing" type="danger" plain :icon="Trash2" @click="deleteService(serviceForm)">{{ t('common.delete') }}</el-button><span /><el-button @click="serviceModal = false">{{ t('common.cancel') }}</el-button><el-button type="primary" @click="submitService">{{ t('common.save') }}</el-button></div></template>
+    </el-dialog>
+
+    <el-dialog v-model="exitModal" width="440px" class="exit-dialog" align-center :close-on-click-modal="false" :close-on-press-escape="!exitResolving" :show-close="!exitResolving" @closed="cancelExitConfirmation">
+      <template #header>
+        <div class="exit-dialog-heading">
+          <span class="exit-dialog-icon" aria-hidden="true"><TriangleAlert :size="22" /></span>
+          <div><h2>{{ t('exitDialog.title') }}</h2><p>{{ t('exitDialog.subtitle') }}</p></div>
+        </div>
+      </template>
+      <p class="exit-dialog-message">{{ t('exitDialog.message') }}</p>
+      <template #footer>
+        <div class="exit-dialog-actions">
+          <el-button :disabled="exitResolving" @click="cancelExitConfirmation">{{ t('common.cancel') }}</el-button>
+          <el-button type="danger" :loading="exitResolving" @click="resolveExitConfirmation(true)">{{ t('exitDialog.confirm') }}</el-button>
+        </div>
+      </template>
     </el-dialog>
   </el-container>
 </template>

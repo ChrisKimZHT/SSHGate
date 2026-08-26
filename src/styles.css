@@ -162,6 +162,19 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .dialog-footer { display: flex; align-items: center; gap: 12px; }
 .dialog-footer > span { flex: 1; }
 .dialog-footer .el-button + .el-button { margin-left: 0; }
+.exit-dialog { --el-dialog-padding-primary: 0; overflow: hidden; border-radius: 16px; }
+.exit-dialog .el-dialog__headerbtn { top: 18px; right: 18px; }
+.exit-dialog .el-dialog__header { padding: 22px 24px 18px; }
+.exit-dialog .el-dialog__body { padding: 20px 24px 22px; }
+.exit-dialog .el-dialog__footer { padding: 16px 24px 20px; background: var(--el-fill-color-lighter); }
+.exit-dialog-heading { display: flex; align-items: center; gap: 14px; padding-right: 24px; }
+.exit-dialog-heading h2 { margin: 0; color: var(--el-text-color-primary); font-size: 17px; line-height: 1.4; }
+.exit-dialog-heading p { margin: 3px 0 0; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.4; }
+.exit-dialog-icon { display: grid; flex: 0 0 44px; width: 44px; height: 44px; place-items: center; border-radius: 12px; color: var(--el-color-warning); background: var(--el-color-warning-light-9); }
+.exit-dialog-message { margin: 0; color: var(--el-text-color-regular); font-size: 14px; line-height: 1.75; }
+.exit-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.exit-dialog-actions .el-button { min-width: 88px; }
+.exit-dialog-actions .el-button + .el-button { margin-left: 0; }
 .form-help { margin-top: 6px; color: var(--el-text-color-secondary); font-size: 11px; line-height: 1.4; }
 .secret-form-item .el-input { width: 100%; }
 .secret-options { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 16px; margin-top: 6px; }

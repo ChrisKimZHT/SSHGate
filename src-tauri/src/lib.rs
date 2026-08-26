@@ -12,9 +12,8 @@ use state::AppState;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, State,
+    AppHandle, Emitter, Manager, State,
 };
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 type CommandResult<T> = Result<T, String>;
 
@@ -248,6 +247,15 @@ async fn export_app_config(state: State<'_, AppState>, path: String) -> CommandR
     state.export_app_config(&path).await.map_err(format_error)
 }
 
+#[tauri::command]
+fn resolve_exit_confirmation(app: AppHandle, confirmed: bool) {
+    if confirmed {
+        app.exit(0);
+    } else {
+        CLOSE_CONFIRMATION_OPEN.store(false, Ordering::SeqCst);
+    }
+}
+
 fn format_error(error: anyhow::Error) -> String {
     format!("{error:#}")
 }
@@ -341,23 +349,9 @@ pub fn run() {
                             return;
                         }
 
-                        let exit_app = app.clone();
-                        app.dialog()
-                            .message("确定要退出 SSHGate 吗？正在运行的连接和服务将会停止。")
-                            .title("确认退出")
-                            .kind(MessageDialogKind::Warning)
-                            .buttons(MessageDialogButtons::OkCancelCustom(
-                                "退出".into(),
-                                "取消".into(),
-                            ))
-                            .parent(&parent)
-                            .show(move |confirmed| {
-                                if confirmed {
-                                    exit_app.exit(0);
-                                } else {
-                                    CLOSE_CONFIRMATION_OPEN.store(false, Ordering::SeqCst);
-                                }
-                            });
+                        if parent.emit("exit-confirmation-requested", ()).is_err() {
+                            CLOSE_CONFIRMATION_OPEN.store(false, Ordering::SeqCst);
+                        }
                     });
                 }
                 tauri::WindowEvent::Resized(_) if window.is_minimized().unwrap_or(false) => {
@@ -388,6 +382,7 @@ pub fn run() {
             import_ssh_config,
             import_app_config,
             export_app_config,
+            resolve_exit_confirmation,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build SSHGate");
