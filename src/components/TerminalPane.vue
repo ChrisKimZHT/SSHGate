@@ -24,6 +24,7 @@ let observer: ResizeObserver | undefined
 let unlistenOutput: UnlistenFn | undefined
 let unlistenClosed: UnlistenFn | undefined
 let resizeTimer: number | undefined
+let remoteTerminalOpen = false
 
 function decodeBase64(value: string) {
   const raw = atob(value)
@@ -36,6 +37,23 @@ async function fitAndResize(send = true) {
   if (!terminal || !fitAddon || !host.value?.clientWidth || !host.value?.clientHeight) return
   fitAddon.fit()
   if (send) await api.terminalResize(props.terminalId, terminal.cols, terminal.rows).catch(() => undefined)
+}
+
+function nextPaint() {
+  return new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+}
+
+async function waitForStableLayout(maxFrames = 12) {
+  let previousSize = ''
+  for (let frame = 0; frame < maxFrames; frame += 1) {
+    await nextPaint()
+    const width = host.value?.clientWidth ?? 0
+    const height = host.value?.clientHeight ?? 0
+    if (!width || !height) continue
+    const size = `${width}x${height}`
+    if (size === previousSize) return
+    previousSize = size
+  }
 }
 
 onMounted(async () => {
@@ -61,7 +79,6 @@ onMounted(async () => {
   fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
   terminal.open(host.value!)
-  await fitAndResize(false)
 
   unlistenOutput = await listen<TerminalEvent>('terminal-output', ({ payload }) => {
     if (payload.terminalId !== props.terminalId || !payload.data) return
@@ -80,12 +97,16 @@ onMounted(async () => {
 
   observer = new ResizeObserver(() => {
     window.clearTimeout(resizeTimer)
-    resizeTimer = window.setTimeout(() => void fitAndResize(), 80)
+    resizeTimer = window.setTimeout(() => void fitAndResize(remoteTerminalOpen), 80)
   })
   observer.observe(host.value!)
 
   try {
+    await waitForStableLayout()
+    await fitAndResize(false)
     await api.openTerminal(props.serverId, props.terminalId, terminal.cols, terminal.rows, props.password)
+    remoteTerminalOpen = true
+    await fitAndResize()
     status.value = t('terminal.connected')
     terminal.focus()
   } catch (error) {
