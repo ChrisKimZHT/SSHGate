@@ -154,21 +154,34 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .config-actions .el-button + .el-button { margin-left: 0; }
 .port-input { width: 100%; }
 
-.el-dialog { --el-dialog-padding-primary: 24px; }
-.el-message-box { --el-messagebox-padding-primary: 18px; }
-.el-dialog__header { padding-bottom: 16px; border-bottom: 1px solid var(--el-border-color-lighter); }
-.el-dialog__body { padding: 20px 0; }
-.el-dialog__footer { padding-top: 16px; border-top: 1px solid var(--el-border-color-lighter); }
+.el-dialog { --el-dialog-padding-primary: 0; overflow: hidden; border-radius: 16px; }
+.el-dialog .el-dialog__headerbtn { top: 14px; right: 14px; width: 40px; height: 40px; }
+.el-dialog__header { padding: 22px 64px 18px 24px; border-bottom: 1px solid var(--el-border-color-lighter); }
+.el-dialog__title { font-size: 17px; font-weight: 600; }
+.el-dialog__body { padding: 20px 24px 22px; }
+.el-dialog__footer { padding: 16px 24px 20px; border-top: 1px solid var(--el-border-color-lighter); background: var(--el-fill-color-lighter); }
+.el-message-box { --el-messagebox-width: 440px; --el-messagebox-border-radius: 16px; --el-messagebox-padding-primary: 0; }
+.el-message-box__header { padding: 22px 64px 18px 24px; border-bottom: 1px solid var(--el-border-color-lighter); }
+.el-message-box__title { font-size: 17px; font-weight: 600; }
+.el-message-box__headerbtn { top: 14px; right: 14px; }
+.el-message-box__content { padding: 20px 24px 22px; }
+.el-message-box__btns { gap: 10px; padding: 16px 24px 20px; border-top: 1px solid var(--el-border-color-lighter); background: var(--el-fill-color-lighter); }
+.el-message-box__btns .el-button { min-width: 88px; }
+.el-message-box__btns .el-button + .el-button { margin-left: 0; }
+.el-message-box:has(.el-message-box__status) .el-message-box__header { display: flex; min-height: 84px; align-items: center; padding-left: 82px; }
+.el-message-box:has(.el-message-box__status) .el-message-box__headerbtn { top: 22px; }
+.el-message-box__status { position: absolute; top: 20px; left: 24px; width: 44px; height: 44px; border-radius: 12px; font-size: 22px; }
+.el-message-box__status.el-message-box-icon--success { background: var(--el-color-success-light-9); }
+.el-message-box__status.el-message-box-icon--info { background: var(--el-color-info-light-9); }
+.el-message-box__status.el-message-box-icon--warning { background: var(--el-color-warning-light-9); }
+.el-message-box__status.el-message-box-icon--error { background: var(--el-color-error-light-9); }
 .server-dialog { display: flex; max-height: calc(100vh - 40px); flex-direction: column; }
 .server-dialog .el-dialog__body { min-height: 0; overflow-x: hidden; overflow-y: auto; }
 .dialog-footer { display: flex; align-items: center; gap: 12px; }
 .dialog-footer > span { flex: 1; }
 .dialog-footer .el-button + .el-button { margin-left: 0; }
-.exit-dialog { --el-dialog-padding-primary: 0; overflow: hidden; border-radius: 16px; }
-.exit-dialog .el-dialog__headerbtn { top: 18px; right: 18px; }
-.exit-dialog .el-dialog__header { padding: 22px 24px 18px; }
-.exit-dialog .el-dialog__body { padding: 20px 24px 22px; }
-.exit-dialog .el-dialog__footer { padding: 16px 24px 20px; background: var(--el-fill-color-lighter); }
+.exit-dialog .el-dialog__header { padding-right: 24px; }
+.exit-dialog .el-dialog__headerbtn { top: 22px; }
 .exit-dialog-heading { display: flex; align-items: center; gap: 14px; padding-right: 24px; }
 .exit-dialog-heading h2 { margin: 0; color: var(--el-text-color-primary); font-size: 17px; line-height: 1.4; }
 .exit-dialog-heading p { margin: 3px 0 0; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.4; }
