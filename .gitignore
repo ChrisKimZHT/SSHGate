@@ -4,3 +4,5 @@ src-tauri/target/
 src-tauri/target-next/
 *.log
 .DS_Store
+.build-tools
+.npm-cache
