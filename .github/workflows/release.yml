@@ -113,6 +113,14 @@ jobs:
         with:
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
 
+      - name: Prepare Windows portable executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          New-Item -ItemType Directory -Path release-assets -Force | Out-Null
+          Copy-Item -LiteralPath 'src-tauri/target/${{ matrix.target }}/release/sshgate.exe' -Destination "release-assets/SSHGate_${version}_windows_x64_portable.exe"
+
       - name: Upload installers
         uses: actions/upload-artifact@v7
         with:
@@ -127,6 +135,7 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/rpm/*.rpm
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
             src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            release-assets/*.exe
 
   publish:
     name: Publish GitHub Release
