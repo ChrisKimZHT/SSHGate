@@ -513,7 +513,7 @@ onBeforeUnmount(() => {
 
 <template>
   <el-container class="app-frame">
-    <el-aside :width="sidebarCollapsed ? '60px' : '232px'" :class="['app-sidebar', { 'is-collapsed': sidebarCollapsed }]">
+    <el-aside :width="sidebarCollapsed ? '60px' : '200px'" :class="['app-sidebar', { 'is-collapsed': sidebarCollapsed }]">
       <div class="brand"><button type="button" class="brand-icon" :title="t('nav.connections')" :aria-label="t('nav.connections')" @click="page = 'servers'"><TerminalSquare :size="20" /></button><div><strong>SSHGate</strong><small v-if="appVersion" class="brand-version"><span>{{ t('brand.version', { version: appVersion }) }}</span><el-link :href="PROJECT_URL" :title="PROJECT_URL" :underline="false" @click.prevent="openProjectPage">ChrisKim</el-link></small></div></div>
       <el-menu :default-active="page" class="nav-menu" @select="page = $event as Page">
         <el-menu-item index="servers"><Server :size="18" /><span>{{ t('nav.connections') }}</span><el-tag v-if="runningServiceCount" class="nav-counter" type="success" effect="light" size="small" round>{{ runningServiceCount }}</el-tag></el-menu-item>
