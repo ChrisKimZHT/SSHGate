@@ -4,9 +4,9 @@
   "version": "../package.json",
   "identifier": "com.zouht.sshgate",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npx --no-install vite",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npx --no-install vue-tsc --noEmit && npx --no-install vite build",
     "frontendDist": "../dist"
   },
   "app": {

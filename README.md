@@ -42,13 +42,15 @@ SSHGate 是一个带**图形界面**的 SSH 端口转发工具。它既可由本
 
 ```bash
 npm install
-npm run tauri dev
+npm run dev
 ```
 
-检查前端：
+开发模式会打开桌面应用，保存 Vue 组件或样式后自动更新界面。
+
+检查前端类型：
 
 ```bash
-npm run build
+npx --no-install vue-tsc --noEmit
 ```
 
 检查后端：
@@ -61,13 +63,13 @@ cargo test --manifest-path src-tauri/Cargo.toml
 构建发布版本：
 
 ```bash
-npm run tauri build
+npm run build
 ```
 
 仅构建可执行文件，不生成安装包：
 
 ```bash
-npm run tauri build -- --no-bundle
+npm run build -- --no-bundle
 ```
 
 ## 贡献
