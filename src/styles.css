@@ -154,13 +154,13 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .settings-card h2 { margin: 0 0 16px; color: var(--el-text-color-primary); font-size: 17px; font-weight: 600; }
 .settings-card .el-divider { margin: 24px 0; }
 .settings-row { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
-.settings-connection-row { flex-wrap: nowrap; }
 .settings-row .el-form-item { margin-bottom: 0; }
 .settings-address-field { flex: 0 1 140px; min-width: 0; }
 .settings-language-field { flex: 0 1 140px; min-width: 0; }
 .settings-language-field .el-select { width: 100%; }
 .settings-number-field { flex: 0 1 80px; min-width: 0; }
-.settings-delay-field { flex-basis: 100px; }
+.settings-delay-field { flex: 0 0 max-content; }
+.settings-delay-field .el-form-item__label { white-space: nowrap; }
 .settings-number-field .el-input-number { width: min(80px, 100%); }
 .settings-switch-field { flex: 0 1 230px; min-width: 160px; }
 .config-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
@@ -213,7 +213,6 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 @media (max-width: 880px) {
   .page-content { padding: 24px 20px 38px; }
   .page-heading { align-items: flex-start; flex-direction: column; }
-  .settings-connection-row { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {
