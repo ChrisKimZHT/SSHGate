@@ -1,7 +1,10 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { RuntimeSnapshot, Settings, SshServer, WebService } from './types'
+import type { HostKeyConfirmation, RuntimeSnapshot, Settings, SshServer, WebService } from './types'
 
 export const api = {
+  hostKeyConfirmations: () => invoke<HostKeyConfirmation[]>('get_host_key_confirmations'),
+  resolveHostKeyConfirmation: (requestId: string, accepted: boolean) =>
+    invoke<void>('resolve_host_key_confirmation', { requestId, accepted }),
   snapshot: () => invoke<RuntimeSnapshot>('get_snapshot'),
   saveServer: (server: SshServer, secret?: string) =>
     invoke<RuntimeSnapshot>('save_server', { server, secret: secret || null }),

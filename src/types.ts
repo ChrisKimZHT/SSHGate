@@ -1,6 +1,18 @@
 export type ConnectionStatus = 'stopped' | 'connecting' | 'connected' | 'error' | 'reconnecting'
 export type ServiceStatus = 'stopped' | 'starting' | 'running' | 'error' | 'reconnecting'
 
+export interface HostKeyConfirmation {
+  requestId: string
+  serverName: string
+  host: string
+  port: number
+  fingerprint: string
+}
+
+export interface HostKeyChange extends HostKeyConfirmation {
+  savedFingerprint: string
+}
+
 export interface SshServer {
   id: string
   name: string

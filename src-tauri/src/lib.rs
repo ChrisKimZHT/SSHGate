@@ -20,6 +20,25 @@ type CommandResult<T> = Result<T, String>;
 static CLOSE_CONFIRMATION_OPEN: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
+async fn get_host_key_confirmations(
+    state: State<'_, AppState>,
+) -> CommandResult<Vec<state::HostKeyConfirmation>> {
+    Ok(state.host_key_confirmations().await)
+}
+
+#[tauri::command]
+async fn resolve_host_key_confirmation(
+    state: State<'_, AppState>,
+    request_id: String,
+    accepted: bool,
+) -> CommandResult<()> {
+    state
+        .resolve_host_key_confirmation(&request_id, accepted)
+        .await;
+    Ok(())
+}
+
+#[tauri::command]
 async fn get_snapshot(state: State<'_, AppState>) -> CommandResult<RuntimeSnapshot> {
     Ok(state.snapshot().await)
 }
@@ -365,6 +384,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
+            get_host_key_confirmations,
+            resolve_host_key_confirmation,
             save_server,
             remove_server,
             save_sort_order,

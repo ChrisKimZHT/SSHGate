@@ -28,6 +28,8 @@ struct Inner {
     config_path: PathBuf,
     config: RwLock<AppConfig>,
     sessions: Mutex<HashMap<String, Arc<Mutex<SshHandle>>>>,
+    connection_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    host_key_confirmations: Mutex<Vec<PendingHostKeyConfirmation>>,
     terminals: Mutex<HashMap<String, TerminalEntry>>,
     server_states: RwLock<HashMap<String, RuntimeState<ConnectionStatus>>>,
     service_states: RwLock<HashMap<String, RuntimeState<ServiceStatus>>>,
@@ -46,6 +48,32 @@ enum TerminalControl {
     Input(Vec<u8>),
     Resize(u32, u32),
     Close,
+}
+
+#[derive(Debug)]
+struct HostKeyRejected(String);
+
+impl std::fmt::Display for HostKeyRejected {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for HostKeyRejected {}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostKeyConfirmation {
+    request_id: String,
+    server_name: String,
+    host: String,
+    port: u16,
+    fingerprint: String,
+}
+
+struct PendingHostKeyConfirmation {
+    request: HostKeyConfirmation,
+    sender: tokio::sync::oneshot::Sender<bool>,
 }
 
 impl AppState {
@@ -84,6 +112,8 @@ impl AppState {
             config_path,
             config: RwLock::new(config),
             sessions: Mutex::new(HashMap::new()),
+            connection_locks: Mutex::new(HashMap::new()),
+            host_key_confirmations: Mutex::new(Vec::new()),
             terminals: Mutex::new(HashMap::new()),
             server_states: RwLock::new(server_states),
             service_states: RwLock::new(service_states),
@@ -92,6 +122,65 @@ impl AppState {
             tcp_tasks: Mutex::new(HashMap::new()),
             shutting_down: AtomicBool::new(false),
         })))
+    }
+
+    pub async fn host_key_confirmations(&self) -> Vec<HostKeyConfirmation> {
+        self.0
+            .host_key_confirmations
+            .lock()
+            .await
+            .iter()
+            .map(|pending| pending.request.clone())
+            .collect()
+    }
+
+    async fn emit_host_key_confirmations(&self) {
+        let _ = self.0.app.emit_to(
+            "main",
+            "host-key-confirmations-changed",
+            self.host_key_confirmations().await,
+        );
+    }
+
+    pub async fn resolve_host_key_confirmation(&self, request_id: &str, accepted: bool) {
+        let mut pending = self.0.host_key_confirmations.lock().await;
+        if let Some(index) = pending
+            .iter()
+            .position(|item| item.request.request_id == request_id)
+        {
+            let request = pending.remove(index);
+            let _ = request.sender.send(accepted);
+        }
+        drop(pending);
+        self.emit_host_key_confirmations().await;
+    }
+
+    async fn confirm_host_key(&self, server: &SshServer, fingerprint: &str) -> bool {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        let request_id = Uuid::new_v4().to_string();
+        self.0
+            .host_key_confirmations
+            .lock()
+            .await
+            .push(PendingHostKeyConfirmation {
+                request: HostKeyConfirmation {
+                    request_id: request_id.clone(),
+                    server_name: server.name.clone(),
+                    host: server.host.clone(),
+                    port: server.port,
+                    fingerprint: fingerprint.into(),
+                },
+                sender,
+            });
+        self.emit_host_key_confirmations().await;
+        // Fail closed if the UI disappears or no answer arrives.
+        let accepted = tokio::time::timeout(Duration::from_secs(300), receiver)
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or(false);
+        self.resolve_host_key_confirmation(&request_id, false).await;
+        accepted
     }
 
     pub async fn snapshot(&self) -> RuntimeSnapshot {
@@ -733,6 +822,15 @@ impl AppState {
         password: Option<String>,
         reconnecting: bool,
     ) -> anyhow::Result<Arc<Mutex<SshHandle>>> {
+        let connection_lock = self
+            .0
+            .connection_locks
+            .lock()
+            .await
+            .entry(server_id.to_owned())
+            .or_default()
+            .clone();
+        let _connection_guard = connection_lock.lock().await;
         if let Some(existing) = self.active_session(server_id).await {
             return Ok(existing);
         }
@@ -787,30 +885,79 @@ impl AppState {
         .await;
         self.emit_state().await;
 
-        let observed = Arc::new(StdMutex::new(None));
-        let handler = ClientHandler::new(server.host_key_fingerprint.clone(), observed.clone());
-        let ssh_config = client::Config {
+        let ssh_config = Arc::new(client::Config {
             inactivity_timeout: Some(Duration::from_secs(600)),
             keepalive_interval: Some(Duration::from_secs(20)),
             keepalive_max: 3,
             nodelay: true,
             ..Default::default()
-        };
-        let connection = client::connect(
-            Arc::new(ssh_config),
-            (server.host.as_str(), server.port),
-            handler,
-        )
-        .await;
-        let mut handle = match connection {
-            Ok(handle) => handle,
-            Err(error) => {
-                let message = friendly_ssh_error(&server, &error.to_string());
-                self.connection_failed(&server.id, reconnecting, &message)
-                    .await;
-                return Err(anyhow!(message));
+        });
+        let mut expected = server.host_key_fingerprint.clone();
+        let mut handle = loop {
+            // Unknown keys are rejected during the probe, before any authentication.
+            let observed = Arc::new(StdMutex::new(None));
+            let handler = ClientHandler::new(expected.clone(), observed.clone());
+            let connection = client::connect(
+                ssh_config.clone(),
+                (server.host.as_str(), server.port),
+                handler,
+            )
+            .await;
+            match connection {
+                Ok(handle) => break handle,
+                Err(error) => {
+                    let fingerprint = observed.lock().ok().and_then(|value| value.clone());
+                    if let Some(fingerprint) = fingerprint {
+                        if let Some(saved) =
+                            expected.as_ref().filter(|saved| *saved != &fingerprint)
+                        {
+                            let message = format!(
+                                "SSH 主机指纹已改变，已拒绝连接 {}:{}。\n已保存指纹：{}\n当前指纹：{}\n请联系服务器管理员核实；确认密钥变更后，可在指纹页面清除旧指纹并重新连接。",
+                                server.host, server.port, saved, fingerprint
+                            );
+                            self.connection_failed(&server.id, false, &message).await;
+                            let notification = format!("SSH 主机指纹已改变:{}", serde_json::json!({
+                                "requestId": Uuid::new_v4().to_string(),
+                                "serverName": server.name,
+                                "host": server.host,
+                                "port": server.port,
+                                "savedFingerprint": saved,
+                                "fingerprint": fingerprint,
+                            }));
+                            let _ = self.0.app.emit_to("main", "host-key-rejected", &notification);
+                            return Err(HostKeyRejected(notification).into());
+                        }
+                        if expected.is_none() {
+                            if !self.confirm_host_key(&server, &fingerprint).await {
+                                let message = "未信任 SSH 主机指纹，已取消连接";
+                                self.connection_failed(&server.id, false, message).await;
+                                return Err(HostKeyRejected(message.into()).into());
+                            }
+                            // Pin the confirmed key on the new handshake as well.
+                            expected = Some(fingerprint);
+                            continue;
+                        }
+                    }
+                    let message = friendly_ssh_error(&server, &error.to_string());
+                    self.connection_failed(&server.id, reconnecting, &message)
+                        .await;
+                    return Err(anyhow!(message));
+                }
             }
         };
+
+        // A server may have been edited or removed while the confirmation was open.
+        let unchanged = self.0.config.read().await.servers.iter().any(|saved| {
+            saved.id == server.id
+                && saved.host == server.host
+                && saved.port == server.port
+                && saved.host_key_fingerprint == server.host_key_fingerprint
+        });
+        if !unchanged {
+            let message = "SSH 主机指纹确认期间服务器配置已更改，请重新连接";
+            self.connection_failed(&server.id, false, message).await;
+            return Err(HostKeyRejected(message.into()).into());
+        }
 
         let authentication: anyhow::Result<bool> = async {
             match server.auth_type {
@@ -862,14 +1009,38 @@ impl AppState {
         }
 
         if server.host_key_fingerprint.is_none() {
-            let fingerprint = observed.lock().ok().and_then(|value| value.clone());
+            let fingerprint = expected;
             if let Some(fingerprint) = fingerprint {
                 let mut config = self.0.config.write().await;
-                if let Some(saved) = config.servers.iter_mut().find(|item| item.id == server.id) {
-                    saved.host_key_fingerprint = Some(fingerprint);
+                if let Some(saved) = config.servers.iter_mut().find(|item| {
+                    item.id == server.id
+                        && item.host == server.host
+                        && item.port == server.port
+                        && item.host_key_fingerprint == server.host_key_fingerprint
+                }) {
+                    saved.host_key_fingerprint = Some(fingerprint.clone());
+                } else {
+                    drop(config);
+                    let message = "SSH 主机指纹确认期间服务器配置已更改，请重新连接";
+                    self.connection_failed(&server.id, false, message).await;
+                    return Err(HostKeyRejected(message.into()).into());
                 }
                 drop(config);
-                let _ = self.persist().await;
+                if let Err(error) = self.persist().await {
+                    let mut config = self.0.config.write().await;
+                    if let Some(saved) = config.servers.iter_mut().find(|item| {
+                        item.id == server.id
+                            && item.host == server.host
+                            && item.port == server.port
+                            && item.host_key_fingerprint.as_ref() == Some(&fingerprint)
+                    }) {
+                        saved.host_key_fingerprint = None;
+                    }
+                    drop(config);
+                    let message = format!("无法保存 SSH 主机指纹：{error:#}");
+                    self.connection_failed(&server.id, false, &message).await;
+                    return Err(HostKeyRejected(message).into());
+                }
             }
         }
 
@@ -976,8 +1147,10 @@ impl AppState {
                     }
                     let delay = state.0.config.read().await.settings.reconnect_delay_seconds;
                     tokio::time::sleep(Duration::from_secs(delay)).await;
-                    if state.connect_internal(&server_id, None, true).await.is_ok() {
-                        return;
+                    match state.connect_internal(&server_id, None, true).await {
+                        Ok(_) => return,
+                        Err(error) if error.is::<HostKeyRejected>() => return,
+                        Err(_) => {}
                     }
                 }
             }

@@ -13,8 +13,8 @@ import {
 } from 'lucide-vue-next'
 import { api } from './api'
 import TerminalPane from './components/TerminalPane.vue'
-import type { RuntimeSnapshot, Settings, SshServer, WebService } from './types'
-import { showError } from './utils/errorDialog'
+import type { HostKeyChange, HostKeyConfirmation, RuntimeSnapshot, Settings, SshServer, WebService } from './types'
+import { hostKeyChanges, showError } from './utils/errorDialog'
 
 type Page = 'servers' | 'terminal' | 'fingerprints' | 'settings'
 type TerminalStatusTone = 'pending' | 'connected' | 'closed' | 'error'
@@ -39,6 +39,18 @@ const serverModal = ref(false)
 const serviceModal = ref(false)
 const exitModal = ref(false)
 const exitResolving = ref(false)
+const hostKeyConfirmations = ref<HostKeyConfirmation[]>([])
+const hostKeyConfirmation = ref<HostKeyConfirmation>()
+const hostKeyChange = ref<HostKeyChange>()
+// Keep the rendered content until the dialog's leave transition has finished.
+watch(() => hostKeyConfirmations.value[0], (request) => {
+  if (request) hostKeyConfirmation.value = request
+}, { immediate: true })
+watch(() => hostKeyChanges.value[0], (change) => {
+  if (change) hostKeyChange.value = change
+}, { immediate: true })
+const hostKeyResolving = ref(false)
+let hostKeyRevision = 0
 const serverEditing = ref(false)
 const serviceEditing = ref(false)
 const serverFormRef = ref<FormInstance>()
@@ -60,6 +72,8 @@ const sortedServerIds = ref<string[]>([])
 const sortedServiceIds = reactive<Record<string, string[]>>({})
 let unlistenState: UnlistenFn | undefined
 let unlistenExitConfirmation: UnlistenFn | undefined
+let unlistenHostKeyConfirmations: UnlistenFn | undefined
+let unlistenHostKeyRejected: UnlistenFn | undefined
 let settingsSaveTimer: number | undefined
 let themeTransitionTimer: number | undefined
 let settingsRevision = 0
@@ -387,7 +401,7 @@ async function ensureServerConnection(server: SshServer) {
     snapshot.value = await api.connectServer(server.id, secret)
   } catch (error) {
     const message = String(error)
-    if (!secret && (server.authType === 'password' || new RegExp(t('secret.connectionErrorPattern'), 'i').test(message))) {
+    if (!message.includes('主机指纹') && !secret && (server.authType === 'password' || new RegExp(t('secret.connectionErrorPattern'), 'i').test(message))) {
       const entered = await askConnectionSecret(server, true)
       if (entered === null) return null
       secret = entered
@@ -489,16 +503,37 @@ async function resolveExitConfirmation(confirmed: boolean) {
 function cancelExitConfirmation() {
   void resolveExitConfirmation(false)
 }
+async function resolveHostKeyConfirmation(accepted: boolean) {
+  const request = hostKeyConfirmations.value[0]
+  if (!request || hostKeyResolving.value) return
+  hostKeyResolving.value = true
+  try {
+    await api.resolveHostKeyConfirmation(request.requestId, accepted)
+    hostKeyConfirmations.value = hostKeyConfirmations.value.filter((item) => item.requestId !== request.requestId)
+  } catch (error) {
+    await showError(error)
+  } finally {
+    hostKeyResolving.value = false
+  }
+}
 onMounted(async () => {
   document.documentElement.classList.toggle('dark', isDark.value)
   const versionPromise = getVersion().catch(() => '')
-  ;[unlistenState, unlistenExitConfirmation] = await Promise.all([
+  ;[unlistenState, unlistenExitConfirmation, unlistenHostKeyConfirmations, unlistenHostKeyRejected] = await Promise.all([
     listen<RuntimeSnapshot>('state-changed', ({ payload }) => { snapshot.value = payload }),
     listen('exit-confirmation-requested', () => {
       exitResolving.value = false
       exitModal.value = true
     }),
+    listen<HostKeyConfirmation[]>('host-key-confirmations-changed', ({ payload }) => {
+      hostKeyRevision++
+      hostKeyConfirmations.value = payload
+    }),
+    listen<string>('host-key-rejected', ({ payload }) => { void showError(payload) }),
   ])
+  const revision = hostKeyRevision
+  const pending = await api.hostKeyConfirmations()
+  if (hostKeyRevision === revision) hostKeyConfirmations.value = pending
   await refresh()
   appVersion.value = await versionPromise
 })
@@ -508,6 +543,8 @@ onBeforeUnmount(() => {
   document.documentElement.classList.remove('theme-transition')
   unlistenState?.()
   unlistenExitConfirmation?.()
+  unlistenHostKeyConfirmations?.()
+  unlistenHostKeyRejected?.()
 })
 </script>
 
@@ -615,6 +652,38 @@ onBeforeUnmount(() => {
         <el-alert type="info" :closable="false" show-icon><template #title><span class="route-summary"><component :is="serviceForm.serviceType === 'http' ? Monitor : Network" :size="14" />{{ t(serviceForm.serviceType === 'http' ? 'serviceDialog.browser' : 'serviceDialog.localClient') }} → <code>{{ serviceForm.serviceType === 'http' ? effectiveServiceDomain() : effectiveLocalEndpoint() }}</code> → SSH → <code>{{ effectiveRemoteHost() }}:{{ effectiveRemotePort() }}</code></span></template></el-alert>
       </el-form>
       <template #footer><div class="dialog-footer"><el-button v-if="serviceEditing" type="danger" plain :icon="Trash2" @click="deleteService(serviceForm)">{{ t('common.delete') }}</el-button><span /><el-button @click="serviceModal = false">{{ t('common.cancel') }}</el-button><el-button type="primary" @click="submitService">{{ t('common.save') }}</el-button></div></template>
+    </el-dialog>
+
+    <el-dialog :model-value="hostKeyChanges.length > 0" :title="t('fingerprints.changedTitle')" width="520px" align-center :close-on-click-modal="false" @update:model-value="!$event && hostKeyChanges.shift()" @closed="!hostKeyChanges.length && (hostKeyChange = undefined)">
+      <template v-if="hostKeyChange">
+        <el-alert :title="t('fingerprints.changedWarning')" type="error" :closable="false" show-icon />
+        <p class="host-key-endpoint">{{ hostKeyChange.serverName }} · {{ formatEndpoint(hostKeyChange.host, hostKeyChange.port) }}</p>
+        <div class="host-key-field">
+          <p class="host-key-label">{{ t('fingerprints.savedFingerprint') }}</p>
+          <code class="host-key-value">{{ hostKeyChange.savedFingerprint }}</code>
+        </div>
+        <div class="host-key-field">
+          <p class="host-key-label">{{ t('fingerprints.currentFingerprint') }}</p>
+          <code class="host-key-value">{{ hostKeyChange.fingerprint }}</code>
+        </div>
+        <p class="host-key-guidance">{{ t('fingerprints.changedGuidance') }}</p>
+      </template>
+      <template #footer>
+        <el-button type="primary" @click="hostKeyChanges.shift()">{{ t('error.acknowledge') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog :model-value="hostKeyConfirmations.length > 0" :title="t('fingerprints.trustTitle')" width="520px" align-center :close-on-click-modal="false" :close-on-press-escape="!hostKeyResolving" :show-close="!hostKeyResolving" @update:model-value="!$event && resolveHostKeyConfirmation(false)" @closed="!hostKeyConfirmations.length && (hostKeyConfirmation = undefined)">
+      <template v-if="hostKeyConfirmation">
+        <el-alert :title="t('fingerprints.trustWarning')" type="warning" :closable="false" show-icon />
+        <p class="host-key-endpoint">{{ hostKeyConfirmation.serverName }} · {{ hostKeyConfirmation.host }}:{{ hostKeyConfirmation.port }}</p>
+        <code class="host-key-value">{{ hostKeyConfirmation.fingerprint }}</code>
+        <p>{{ t('fingerprints.trustQuestion') }}</p>
+      </template>
+      <template #footer>
+        <el-button :disabled="hostKeyResolving" @click="resolveHostKeyConfirmation(false)">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="hostKeyResolving" @click="resolveHostKeyConfirmation(true)">{{ t('fingerprints.trustAndConnect') }}</el-button>
+      </template>
     </el-dialog>
 
     <el-dialog v-model="exitModal" width="440px" class="exit-dialog" align-center :close-on-click-modal="false" :close-on-press-escape="!exitResolving" :show-close="!exitResolving" @closed="cancelExitConfirmation">

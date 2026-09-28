@@ -171,6 +171,7 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .el-message-box__title { font-size: 17px; font-weight: 600; }
 .el-message-box__headerbtn { top: 14px; right: 14px; }
 .el-message-box__content { padding: 20px 24px 22px; }
+.el-message-box__message { white-space: pre-wrap; overflow-wrap: anywhere; }
 .el-message-box__btns { gap: 10px; padding: 16px 24px 20px; border-top: 1px solid var(--el-border-color-lighter); background: var(--el-fill-color-lighter); }
 .el-message-box__btns .el-button { min-width: 88px; }
 .el-message-box__btns .el-button + .el-button { margin-left: 0; }
@@ -211,4 +212,18 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
   html.theme-transition *,
   html.theme-transition *::before,
   html.theme-transition *::after { transition-duration: 0s !important; }
+}
+.host-key-endpoint { overflow-wrap: anywhere; }
+.host-key-field + .host-key-field { margin-top: 16px; }
+.host-key-label { margin: 0 0 8px; color: var(--el-text-color-secondary); font-size: 13px; }
+.host-key-guidance { margin: 20px 0 0; line-height: 1.7; }
+.host-key-value {
+  display: block;
+  padding: 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
+  overflow-wrap: anywhere;
+  user-select: text;
 }
