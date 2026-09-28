@@ -34,44 +34,6 @@ SSHGate 是一个带**图形界面**的 SSH 端口转发工具。它既可由本
 
 桌面端基于 Tauri 2、Vue 3 和 Element Plus。Rust 后端使用 `russh` 与 Tokio 管理 SSH 会话，通过 SSH `direct-tcpip` channel 转发远端流量；HTTP 模式由内置反向代理按 `.localhost` 域名路由，TCP 模式则使用每项服务独立的本地监听端口进行字节流透传。同一服务器的应用和终端复用 SSH 会话，终端界面由 xterm.js 提供。
 
-## 开发
-
-需要 Node.js 20+、Rust 1.85+，以及 [Tauri 2 平台依赖](https://v2.tauri.app/start/prerequisites/)。
-
-安装依赖并启动开发模式：
-
-```bash
-npm install
-npm run dev
-```
-
-开发模式会打开桌面应用，保存 Vue 组件或样式后自动更新界面。
-
-检查前端类型：
-
-```bash
-npx --no-install vue-tsc --noEmit
-```
-
-检查后端：
-
-```bash
-cargo check --manifest-path src-tauri/Cargo.toml
-cargo test --manifest-path src-tauri/Cargo.toml
-```
-
-构建发布版本：
-
-```bash
-npm run build
-```
-
-仅构建可执行文件，不生成安装包：
-
-```bash
-npm run build -- --no-bundle
-```
-
 ## 贡献
 
 该项目**几乎处处**由 Codex 完成，因此接受任何形式的贡献，欢迎提交 PR 或 Issues。
