@@ -10,7 +10,7 @@ import { useI18n } from 'vue-i18n'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import en from 'element-plus/es/locale/lang/en'
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, Check, CirclePlus, Copy, ExternalLink, FileInput, FileOutput, Fingerprint, Globe2, Import, Monitor, Moon, Network, Pencil, Plus,
+  ArrowDown, ArrowUp, ArrowUpDown, Check, CirclePlus, Copy, ExternalLink, FileInput, FileOutput, Fingerprint, FolderOpen, Globe2, Import, Monitor, Moon, Network, Pencil, Plus,
   PanelLeftClose, PanelLeftOpen, Server, Settings as Setting, Sun, TerminalSquare, Trash2, TriangleAlert,
 } from 'lucide-vue-next'
 import { api } from './api'
@@ -490,6 +490,11 @@ async function exportAppConfig() {
     ElMessage.success(t('config.appExported'))
   } catch (error) { await showError(error) }
 }
+async function openConfigFolder() {
+  try {
+    await api.openConfigFolder()
+  } catch (error) { await showError(error) }
+}
 async function openProjectPage() {
   try {
     await openUrl(PROJECT_URL)
@@ -621,23 +626,19 @@ onBeforeUnmount(() => {
         </template>
 
         <template v-if="page === 'settings'">
-          <div class="page-heading"><div><h1>{{ t('settings.title') }}</h1><p>{{ t('settings.description') }}</p></div></div>
-          <el-card shadow="never" class="settings-card">
-            <el-form :model="settingsForm" label-position="top">
-              <h3>{{ t('settings.languageTitle') }}</h3>
-              <div class="settings-row"><el-form-item class="settings-language-field" :label="t('settings.language')"><el-select v-model="locale"><el-option :label="t('settings.chinese')" value="zh-CN" /><el-option :label="t('settings.english')" value="en-US" /></el-select></el-form-item></div>
+          <div class="page-heading settings-page-heading"><div><h1>{{ t('settings.title') }}</h1><p>{{ t('settings.description') }}</p></div></div>
+          <el-form :model="settingsForm" label-position="top" class="settings-groups">
+            <el-card shadow="never" class="settings-card">
+              <h2>{{ t('settings.interfaceTitle') }}</h2>
+              <div class="settings-row"><el-form-item class="settings-language-field" :label="t('settings.languageTitle')"><el-select v-model="locale"><el-option :label="t('settings.chinese')" value="zh-CN" /><el-option :label="t('settings.english')" value="en-US" /></el-select></el-form-item><el-form-item class="settings-switch-field" :label="t('settings.privacyMode')"><el-switch v-model="settingsForm.privacyMode" /></el-form-item></div>
               <el-divider />
-              <h3>{{ t('settings.proxyTitle') }}</h3><el-text type="info">{{ t('settings.proxyHelp') }}</el-text>
-              <div class="settings-row"><el-form-item class="settings-address-field" :label="t('settings.listenAddress')"><el-input v-model="settingsForm.listenAddress" /></el-form-item><el-form-item class="settings-number-field" :label="t('settings.listenPort')"><el-input-number v-model="settingsForm.listenPort" class="port-input" :min="1" :max="65535" :controls="false" align="left" /></el-form-item></div>
+              <h2>{{ t('settings.connectionTitle') }}</h2>
+              <div class="settings-row settings-connection-row"><el-form-item class="settings-address-field" :label="t('settings.listenAddress')"><el-input v-model="settingsForm.listenAddress" /></el-form-item><el-form-item class="settings-number-field" :label="t('settings.listenPort')"><el-input-number v-model="settingsForm.listenPort" class="port-input" :min="1" :max="65535" :controls="false" align="left" /></el-form-item><el-form-item class="settings-number-field settings-delay-field" :label="t('settings.reconnectDelay')"><el-input-number v-model="settingsForm.reconnectDelaySeconds" :min="1" :max="300" controls-position="right" /></el-form-item><el-form-item class="settings-switch-field" :label="t('settings.restoreServices')"><el-switch v-model="settingsForm.autoStartServices" /></el-form-item></div>
               <el-divider />
-              <h3>{{ t('settings.recoveryTitle') }}</h3><div class="settings-row"><el-form-item class="settings-number-field" :label="t('settings.reconnectDelay')"><el-input-number v-model="settingsForm.reconnectDelaySeconds" :min="1" :max="300" controls-position="right" /></el-form-item><el-form-item class="settings-switch-field" :label="t('settings.restoreServices')"><el-switch v-model="settingsForm.autoStartServices" /></el-form-item></div>
-              <el-divider />
-              <h3>{{ t('settings.privacyTitle') }}</h3><div class="settings-row"><el-form-item class="settings-switch-field" :label="t('settings.privacyMode')"><el-switch v-model="settingsForm.privacyMode" /></el-form-item></div>
-              <el-divider />
-              <h3>{{ t('settings.configTitle') }}</h3><el-text type="info">{{ t('settings.configHelp') }}</el-text>
-              <div class="config-actions"><el-button :icon="Import" @click="importConfig">{{ t('settings.importSshConfig') }}</el-button><el-button :icon="FileInput" @click="importAppConfig">{{ t('settings.importAppConfig') }}</el-button><el-button :icon="FileOutput" @click="exportAppConfig">{{ t('settings.exportAppConfig') }}</el-button></div>
-            </el-form>
-          </el-card>
+              <h2>{{ t('settings.configTitle') }}</h2><el-text type="info">{{ t('settings.configHelp') }}</el-text>
+              <div class="config-actions"><el-button :icon="Import" @click="importConfig">{{ t('settings.importSshConfig') }}</el-button><el-button :icon="FileInput" @click="importAppConfig">{{ t('settings.importAppConfig') }}</el-button><el-button :icon="FileOutput" @click="exportAppConfig">{{ t('settings.exportAppConfig') }}</el-button><el-button :icon="FolderOpen" @click="openConfigFolder">{{ t('settings.openConfigFolder') }}</el-button></div>
+            </el-card>
+          </el-form>
         </template>
       </el-main>
     </el-container>

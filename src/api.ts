@@ -34,5 +34,6 @@ export const api = {
   importSshConfig: () => invoke<SshServer[]>('import_ssh_config'),
   importAppConfig: (path: string) => invoke<RuntimeSnapshot>('import_app_config', { path }),
   exportAppConfig: (path: string) => invoke<void>('export_app_config', { path }),
+  openConfigFolder: () => invoke<void>('open_config_folder'),
   resolveExitConfirmation: (confirmed: boolean) => invoke<void>('resolve_exit_confirmation', { confirmed }),
 }

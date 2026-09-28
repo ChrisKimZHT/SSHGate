@@ -147,18 +147,23 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .fingerprint-server code { color: var(--el-text-color-secondary); font-size: 11px; }
 .fingerprint-value { display: block; overflow: hidden; max-width: 100%; color: var(--el-text-color-regular); font-size: 12px; line-height: 1.55; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
 
-.settings-card { max-width: 1180px; margin: 0 auto; border-radius: 12px; }
-.settings-card > .el-card__body { padding: 28px; }
-.settings-card h3 { margin: 0 0 7px; color: var(--el-text-color-primary); font-size: 15px; }
-.settings-row { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin-top: 22px; }
+.settings-page-heading { margin-bottom: 18px; }
+.settings-groups { max-width: 1180px; margin: 0 auto; }
+.settings-card { border-radius: 12px; }
+.settings-card > .el-card__body { padding: 24px 28px; }
+.settings-card h2 { margin: 0 0 16px; color: var(--el-text-color-primary); font-size: 17px; font-weight: 600; }
+.settings-card .el-divider { margin: 24px 0; }
+.settings-row { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
+.settings-connection-row { flex-wrap: nowrap; }
 .settings-row .el-form-item { margin-bottom: 0; }
-.settings-address-field { flex: 0 1 360px; min-width: 240px; }
-.settings-language-field { flex: 0 1 240px; min-width: 200px; }
+.settings-address-field { flex: 0 1 140px; min-width: 0; }
+.settings-language-field { flex: 0 1 140px; min-width: 0; }
 .settings-language-field .el-select { width: 100%; }
-.settings-number-field { flex: 0 0 160px; }
-.settings-number-field .el-input-number { width: 100%; }
-.settings-switch-field { flex: 0 0 auto; min-width: 160px; }
-.config-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.settings-number-field { flex: 0 1 80px; min-width: 0; }
+.settings-delay-field { flex-basis: 100px; }
+.settings-number-field .el-input-number { width: min(80px, 100%); }
+.settings-switch-field { flex: 0 1 230px; min-width: 160px; }
+.config-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
 .config-actions .el-button + .el-button { margin-left: 0; }
 .port-input { width: 100%; }
 
@@ -208,6 +213,7 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 @media (max-width: 880px) {
   .page-content { padding: 24px 20px 38px; }
   .page-heading { align-items: flex-start; flex-direction: column; }
+  .settings-connection-row { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {

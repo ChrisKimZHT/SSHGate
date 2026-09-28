@@ -14,6 +14,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, State,
 };
+use tauri_plugin_opener::OpenerExt;
 
 type CommandResult<T> = Result<T, String>;
 
@@ -267,6 +268,20 @@ async fn export_app_config(state: State<'_, AppState>, path: String) -> CommandR
 }
 
 #[tauri::command]
+async fn open_config_folder(app: AppHandle) -> CommandResult<()> {
+    let folder = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| error.to_string())?;
+    tokio::fs::create_dir_all(&folder)
+        .await
+        .map_err(|error| error.to_string())?;
+    app.opener()
+        .open_path(folder.to_string_lossy().into_owned(), None::<&str>)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn resolve_exit_confirmation(app: AppHandle, confirmed: bool) {
     if confirmed {
         app.exit(0);
@@ -406,6 +421,7 @@ pub fn run() {
             import_ssh_config,
             import_app_config,
             export_app_config,
+            open_config_folder,
             resolve_exit_confirmation,
         ])
         .build(tauri::generate_context!())
