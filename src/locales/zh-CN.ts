@@ -83,7 +83,11 @@ export default {
   },
   settings: {
     title: '设置',
-    description: '调整本地代理入口和连接恢复行为。',
+    description: '调整界面语言、本地代理入口和连接恢复行为。',
+    languageTitle: '界面语言',
+    language: '语言',
+    chinese: '简体中文',
+    english: 'English',
     proxyTitle: 'HTTP 反向代理',
     proxyHelp: '端口 80 可直接使用 http://*.localhost；端口被占用时可在这里修改。',
     listenAddress: '监听地址',

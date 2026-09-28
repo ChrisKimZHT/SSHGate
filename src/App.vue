@@ -7,6 +7,8 @@ import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plug
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type TagProps } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import en from 'element-plus/es/locale/lang/en'
 import {
   ArrowDown, ArrowUp, ArrowUpDown, Check, CirclePlus, Copy, ExternalLink, FileInput, FileOutput, Fingerprint, Globe2, Import, Monitor, Moon, Network, Pencil, Plus,
   PanelLeftClose, PanelLeftOpen, Server, Settings as Setting, Sun, TerminalSquare, Trash2, TriangleAlert,
@@ -22,7 +24,12 @@ interface TerminalTab { id: string; serverId: string; title: string; password?: 
 type ServerForm = Omit<SshServer, 'port'> & { port?: number }
 type ServiceForm = Omit<WebService, 'remotePort' | 'localPort'> & { remotePort?: number; localPort?: number }
 
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
+const elementLocale = computed(() => locale.value === 'en-US' ? en : zhCn)
+watch(locale, (value) => {
+  localStorage.setItem('sshgate-locale', value)
+  document.documentElement.lang = value
+}, { immediate: true })
 
 const DEFAULT_SERVER_PORT = 22
 const DEFAULT_PRIVATE_KEY_PATH = '~/.ssh/id_ed25519'
@@ -549,6 +556,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <el-config-provider :locale="elementLocale">
   <el-container class="app-frame">
     <el-aside :width="sidebarCollapsed ? '60px' : '200px'" :class="['app-sidebar', { 'is-collapsed': sidebarCollapsed }]">
       <div class="brand"><button type="button" class="brand-icon" :title="t('nav.connections')" :aria-label="t('nav.connections')" @click="page = 'servers'"><TerminalSquare :size="20" /></button><div><strong>SSHGate</strong><small v-if="appVersion" class="brand-version"><span>{{ t('brand.version', { version: appVersion }) }}</span><el-link :href="PROJECT_URL" :title="PROJECT_URL" :underline="false" @click.prevent="openProjectPage">ChrisKim</el-link></small></div></div>
@@ -616,6 +624,9 @@ onBeforeUnmount(() => {
           <div class="page-heading"><div><h1>{{ t('settings.title') }}</h1><p>{{ t('settings.description') }}</p></div></div>
           <el-card shadow="never" class="settings-card">
             <el-form :model="settingsForm" label-position="top">
+              <h3>{{ t('settings.languageTitle') }}</h3>
+              <div class="settings-row"><el-form-item class="settings-language-field" :label="t('settings.language')"><el-select v-model="locale"><el-option :label="t('settings.chinese')" value="zh-CN" /><el-option :label="t('settings.english')" value="en-US" /></el-select></el-form-item></div>
+              <el-divider />
               <h3>{{ t('settings.proxyTitle') }}</h3><el-text type="info">{{ t('settings.proxyHelp') }}</el-text>
               <div class="settings-row"><el-form-item class="settings-address-field" :label="t('settings.listenAddress')"><el-input v-model="settingsForm.listenAddress" /></el-form-item><el-form-item class="settings-number-field" :label="t('settings.listenPort')"><el-input-number v-model="settingsForm.listenPort" class="port-input" :min="1" :max="65535" :controls="false" align="left" /></el-form-item></div>
               <el-divider />
@@ -702,4 +713,5 @@ onBeforeUnmount(() => {
       </template>
     </el-dialog>
   </el-container>
+  </el-config-provider>
 </template>

@@ -153,6 +153,8 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .settings-row { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin-top: 22px; }
 .settings-row .el-form-item { margin-bottom: 0; }
 .settings-address-field { flex: 0 1 360px; min-width: 240px; }
+.settings-language-field { flex: 0 1 240px; min-width: 200px; }
+.settings-language-field .el-select { width: 100%; }
 .settings-number-field { flex: 0 0 160px; }
 .settings-number-field .el-input-number { width: 100%; }
 .settings-switch-field { flex: 0 0 auto; min-width: 160px; }
