@@ -614,9 +614,17 @@ impl AppState {
         if settings.listen_address.trim().is_empty() || settings.reconnect_delay_seconds == 0 {
             return Err(anyhow!("监听地址不能为空，重连间隔必须大于 0"));
         }
-        self.0.config.write().await.settings = settings;
+        let proxy_address_changed = {
+            let mut config = self.0.config.write().await;
+            let changed = config.settings.listen_address != settings.listen_address
+                || config.settings.listen_port != settings.listen_port;
+            config.settings = settings;
+            changed
+        };
         self.persist().await?;
-        self.restart_proxy().await;
+        if proxy_address_changed {
+            self.restart_proxy().await;
+        }
         self.emit_state().await;
         Ok(())
     }

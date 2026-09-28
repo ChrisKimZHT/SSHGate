@@ -5,12 +5,9 @@ import enUS from './locales/en-US'
 export type MessageSchema = typeof zhCN
 export type SupportedLocale = 'zh-CN' | 'en-US'
 
-const savedLocale = localStorage.getItem('sshgate-locale')
-const initialLocale: SupportedLocale = savedLocale === 'en-US' ? 'en-US' : 'zh-CN'
-
 export const i18n = createI18n<[MessageSchema], SupportedLocale>({
   legacy: false,
-  locale: initialLocale,
+  locale: 'zh-CN',
   fallbackLocale: 'zh-CN',
   messages: {
     'zh-CN': zhCN,

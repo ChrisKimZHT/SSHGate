@@ -1,3 +1,5 @@
+import type { SupportedLocale } from './i18n'
+
 export type ConnectionStatus = 'stopped' | 'connecting' | 'connected' | 'error' | 'reconnecting'
 export type ServiceStatus = 'stopped' | 'starting' | 'running' | 'error' | 'reconnecting'
 
@@ -39,6 +41,7 @@ export interface WebService {
 }
 
 export interface Settings {
+  locale: SupportedLocale
   listenAddress: string
   listenPort: number
   reconnectDelaySeconds: number

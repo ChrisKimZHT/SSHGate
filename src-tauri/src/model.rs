@@ -57,9 +57,20 @@ fn default_local_address() -> String {
     "127.0.0.1".into()
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum AppLocale {
+    #[default]
+    #[serde(rename = "zh-CN")]
+    ZhCn,
+    #[serde(rename = "en-US")]
+    EnUs,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
+    #[serde(default)]
+    pub locale: AppLocale,
     pub listen_address: String,
     pub listen_port: u16,
     pub reconnect_delay_seconds: u64,
@@ -71,6 +82,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            locale: AppLocale::default(),
             listen_address: "127.0.0.1".into(),
             listen_port: 80,
             reconnect_delay_seconds: 3,
@@ -157,7 +169,7 @@ pub struct TerminalEvent {
 
 #[cfg(test)]
 mod tests {
-    use super::{ServiceType, WebService};
+    use super::{AppLocale, ServiceType, Settings, WebService};
 
     #[test]
     fn legacy_web_service_defaults_to_http() {
@@ -169,5 +181,20 @@ mod tests {
         assert_eq!(service.service_type, ServiceType::Http);
         assert_eq!(service.local_address, "127.0.0.1");
         assert_eq!(service.local_port, 0);
+    }
+
+    #[test]
+    fn legacy_settings_default_to_chinese_and_english_round_trips() {
+        let mut settings: Settings = serde_json::from_str(
+            r#"{"listenAddress":"127.0.0.1","listenPort":80,"reconnectDelaySeconds":3,"autoStartServices":true}"#,
+        )
+        .unwrap();
+        assert_eq!(settings.locale, AppLocale::ZhCn);
+
+        settings.locale = AppLocale::EnUs;
+        let serialized = serde_json::to_value(&settings).unwrap();
+        assert_eq!(serialized["locale"], "en-US");
+        let restored: Settings = serde_json::from_value(serialized).unwrap();
+        assert_eq!(restored.locale, AppLocale::EnUs);
     }
 }

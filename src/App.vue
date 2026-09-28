@@ -27,7 +27,6 @@ type ServiceForm = Omit<WebService, 'remotePort' | 'localPort'> & { remotePort?:
 const { t, te, locale } = useI18n()
 const elementLocale = computed(() => locale.value === 'en-US' ? en : zhCn)
 watch(locale, (value) => {
-  localStorage.setItem('sshgate-locale', value)
   document.documentElement.lang = value
 }, { immediate: true })
 
@@ -114,7 +113,8 @@ const blankService = (serverId = ''): ServiceForm => ({
 })
 const serverForm = reactive<ServerForm>(blankServer())
 const serviceForm = reactive<ServiceForm>(blankService())
-const settingsForm = reactive<Settings>({ listenAddress: '127.0.0.1', listenPort: 80, reconnectDelaySeconds: 3, autoStartServices: true, privacyMode: false })
+const settingsForm = reactive<Settings>({ locale: 'zh-CN', listenAddress: '127.0.0.1', listenPort: 80, reconnectDelaySeconds: 3, autoStartServices: true, privacyMode: false })
+watch(() => settingsForm.locale, (value) => { locale.value = value }, { immediate: true })
 
 const serverRules = computed<FormRules>(() => ({
   name: [{ required: true, message: t('validation.serverName'), trigger: 'blur' }],
@@ -630,7 +630,7 @@ onBeforeUnmount(() => {
           <el-form :model="settingsForm" label-position="top" class="settings-groups">
             <el-card shadow="never" class="settings-card">
               <h2>{{ t('settings.interfaceTitle') }}</h2>
-              <div class="settings-row"><el-form-item class="settings-language-field" :label="t('settings.languageTitle')"><el-select v-model="locale"><el-option :label="t('settings.chinese')" value="zh-CN" /><el-option :label="t('settings.english')" value="en-US" /></el-select></el-form-item><el-form-item class="settings-switch-field" :label="t('settings.privacyMode')"><el-switch v-model="settingsForm.privacyMode" /></el-form-item></div>
+              <div class="settings-row"><el-form-item class="settings-language-field" :label="t('settings.languageTitle')"><el-select v-model="settingsForm.locale"><el-option :label="t('settings.chinese')" value="zh-CN" /><el-option :label="t('settings.english')" value="en-US" /></el-select></el-form-item><el-form-item class="settings-switch-field" :label="t('settings.privacyMode')"><el-switch v-model="settingsForm.privacyMode" /></el-form-item></div>
               <el-divider />
               <h2>{{ t('settings.connectionTitle') }}</h2>
               <div class="settings-row settings-connection-row"><el-form-item class="settings-address-field" :label="t('settings.listenAddress')"><el-input v-model="settingsForm.listenAddress" /></el-form-item><el-form-item class="settings-number-field" :label="t('settings.listenPort')"><el-input-number v-model="settingsForm.listenPort" class="port-input" :min="1" :max="65535" :controls="false" align="left" /></el-form-item><el-form-item class="settings-number-field settings-delay-field" :label="t('settings.reconnectDelay')"><el-input-number v-model="settingsForm.reconnectDelaySeconds" :min="1" :max="300" controls-position="right" /></el-form-item><el-form-item class="settings-switch-field" :label="t('settings.restoreServices')"><el-switch v-model="settingsForm.autoStartServices" /></el-form-item></div>
