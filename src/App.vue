@@ -137,6 +137,10 @@ const services = computed(() => snapshot.value?.config.services ?? [])
 const proxyHealthy = computed(() => !snapshot.value?.proxyError)
 const runningServiceCount = computed(() => services.value.filter((service) => serviceState(service.id).status === 'running').length)
 
+watch([loading, () => snapshot.value?.proxyError], ([isLoading, error]) => {
+  if (!isLoading && error) void showError(error)
+})
+
 function orderByIds<T extends { id: string }>(items: T[], ids: string[]) {
   const itemsById = new Map(items.map((item) => [item.id, item]))
   return ids.map((id) => itemsById.get(id)).filter((item): item is T => item !== undefined)
