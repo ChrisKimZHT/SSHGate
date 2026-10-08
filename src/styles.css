@@ -93,6 +93,7 @@ code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font
 .server-header .el-avatar { flex: 0 0 auto; color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
 .server-header-actions { display: inline-flex; align-items: center; gap: 2px; }
 .server-header-actions .el-switch { margin-left: 6px; }
+.el-switch.has-error { --el-switch-on-color: var(--el-color-danger); --el-switch-off-color: var(--el-color-danger); }
 .server-header-actions .el-button + .el-button { margin-left: 0; }
 .server-title { display: grid; min-width: 0; align-content: center; gap: 4px; }
 .server-title h3 { overflow: hidden; margin: 0; color: var(--el-text-color-primary); font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
